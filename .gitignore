@@ -8,3 +8,28 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local environment files
+.env
+.env.*
+!.env.example
+.python-version
+
+# Runtime data
+db.sqlite3
+db.sqlite3-*
+*.log
+staticfiles/
+projects/
+network_config.json
+
+# Bundled or machine-specific dependencies
+_vendor/
+
+# OS-generated files
+Thumbs.db
+.DS_Store
+
+# Local business data
+zichouktfeiyong/
+科研课题管理总表.xlsx

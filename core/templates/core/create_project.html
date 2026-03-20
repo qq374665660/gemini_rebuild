@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>创建新课题 - 科研课题管理系统</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;700&family=Noto+Sans+SC:wght@400;500;600&family=Noto+Serif+SC:wght@600;700&display=swap">
+    <style>
+        body.page-theme {
+            --ink: #0f172a;
+            --muted: #64748b;
+            --muted-strong: #475569;
+            --accent: #0f172a;
+            --accent-strong: #0b1220;
+            --accent-soft: #e2e8f0;
+            --accent-weak: #f1f5f9;
+            --surface: #ffffff;
+            --surface-strong: #f8fafc;
+            --page-bg: #f1f5f9;
+            --stroke: #e2e8f0;
+            --stroke-strong: #cbd5e1;
+            --ring: rgba(15, 23, 42, 0.14);
+            --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.08);
+            --shadow-soft: 0 10px 26px rgba(15, 23, 42, 0.08);
+            --radius-card: 12px;
+            --radius-input: 8px;
+            --font-sans: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+            --font-serif: "Source Serif 4", "Noto Serif SC", serif;
+        }
+
+        body.theme-create.dark,
+        body.theme-create[data-theme="dark"] {
+            --ink: #e2e8f0;
+            --muted: #94a3b8;
+            --muted-strong: #cbd5e1;
+            --accent: #e2e8f0;
+            --accent-strong: #f8fafc;
+            --accent-soft: #1f2937;
+            --accent-weak: #0f172a;
+            --surface: #0b1120;
+            --surface-strong: #0f172a;
+            --page-bg: #0b1120;
+            --stroke: #1f2937;
+            --stroke-strong: #334155;
+            --ring: rgba(226, 232, 240, 0.16);
+            --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
+            --shadow-soft: 0 12px 28px rgba(0, 0, 0, 0.45);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            body.page-theme {
+                --ink: #e2e8f0;
+                --muted: #94a3b8;
+                --muted-strong: #cbd5e1;
+                --accent: #e2e8f0;
+                --accent-strong: #f8fafc;
+                --accent-soft: #1f2937;
+                --accent-weak: #0f172a;
+                --surface: #0b1120;
+                --surface-strong: #0f172a;
+                --page-bg: #0b1120;
+                --stroke: #1f2937;
+                --stroke-strong: #334155;
+                --ring: rgba(226, 232, 240, 0.16);
+                --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
+                --shadow-soft: 0 12px 28px rgba(0, 0, 0, 0.45);
+            }
+        }
+
+        body.theme-create {
+            font-family: var(--font-sans);
+            color: var(--ink);
+            background: var(--page-bg);
+        }
+
+        body.theme-create .app-main {
+            background-color: var(--page-bg);
+        }
+
+        body.theme-create .app-content {
+            background: transparent;
+        }
+
+        body.theme-create .navbar,
+        body.theme-create .app-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--stroke);
+            box-shadow: none;
+        }
+
+        body.theme-create .navbar-container {
+            height: 68px;
+        }
+
+        body.theme-create .navbar-brand {
+            font-family: var(--font-sans);
+            font-weight: 600;
+            color: var(--ink);
+        }
+
+        body.theme-create .navbar-brand:hover {
+            transform: none;
+        }
+
+        body.theme-create .navbar-brand-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            background: var(--ink);
+            box-shadow: none;
+            font-size: 16px;
+            color: var(--surface);
+        }
+
+        body.theme-create .navbar-nav-link {
+            color: var(--muted-strong);
+            border-radius: 10px;
+            padding: 8px 12px;
+        }
+
+        body.theme-create .navbar-nav-link::before {
+            display: none;
+        }
+
+        body.theme-create .navbar-nav-link:hover,
+        body.theme-create .navbar-nav-link.active {
+            color: var(--ink);
+            box-shadow: none;
+            background: var(--accent-weak);
+        }
+
+        body.theme-create .navbar-nav-link.active::after {
+            display: none;
+        }
+
+        body.theme-create .navbar-search-input {
+            background: var(--surface-strong);
+            border-color: var(--stroke);
+            color: var(--ink);
+        }
+
+        body.theme-create .navbar-search-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--ring);
+            background: var(--surface);
+        }
+
+        body.theme-create .navbar-action-btn {
+            color: var(--muted-strong);
+            border-radius: 8px;
+        }
+
+        body.theme-create .navbar-action-btn:hover {
+            color: var(--ink);
+            background-color: var(--accent-weak);
+        }
+
+        body.theme-create .navbar-user-toggle:hover {
+            background-color: var(--accent-weak);
+        }
+
+        body.theme-create .navbar-user-avatar {
+            background: var(--accent);
+            color: var(--surface);
+        }
+
+        body.theme-create .page-header {
+            position: relative;
+            overflow: hidden;
+            background: var(--surface);
+            border-bottom: 1px solid var(--stroke);
+            padding: 18px 0 12px;
+        }
+
+        body.theme-create .page-header::after {
+            display: none;
+        }
+
+        body.theme-create .page-title {
+            font-family: var(--font-sans);
+            letter-spacing: -0.2px;
+            color: var(--ink);
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        body.theme-create .page-title i {
+            color: var(--muted-strong);
+        }
+
+        body.theme-create .page-subtitle {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        body.theme-create .page-actions .btn {
+            padding: 8px 12px;
+            font-size: 13px;
+        }
+
+        body.theme-create .breadcrumb {
+            font-size: 12px;
+            color: var(--muted);
+            padding: 8px 0 4px;
+        }
+
+        body.theme-create .breadcrumb-item.active {
+            color: var(--muted-strong);
+            font-weight: 500;
+        }
+
+        body.theme-create .page-body {
+            padding-top: 16px;
+        }
+
+        body.theme-create .content-section {
+            background: var(--surface);
+            border: 1px solid var(--stroke);
+            border-radius: var(--radius-card);
+            box-shadow: var(--shadow-card);
+            margin-bottom: 16px;
+        }
+
+        body.theme-create .content-section-header {
+            border-bottom: 1px solid var(--stroke);
+            background: transparent;
+            padding: 14px 18px;
+        }
+
+        body.theme-create .content-section-title {
+            font-family: var(--font-sans);
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0;
+            color: var(--ink);
+        }
+
+        body.theme-create .content-section-title i {
+            color: var(--muted);
+        }
+
+        body.theme-create .content-section-actions {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        body.theme-create .content-section-body {
+            padding: 18px;
+        }
+
+        body.theme-create .content-section-muted {
+            background: transparent;
+            border: 1px dashed var(--stroke);
+            box-shadow: none;
+        }
+
+        body.theme-create .content-section-muted .content-section-header {
+            background: transparent;
+            border-bottom: 1px dashed var(--stroke);
+        }
+
+        body.theme-create .content-section-muted .content-section-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--muted-strong);
+        }
+
+        body.theme-create .content-section-muted .content-section-body {
+            padding: 14px 16px;
+        }
+
+        body.theme-create .content-section-form {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+        }
+
+        body.theme-create .content-section-form .content-section-header {
+            padding-left: 0;
+            padding-right: 0;
+            border-bottom: none;
+        }
+
+        body.theme-create .content-section-form .content-section-body {
+            padding: 0;
+            margin-top: 12px;
+        }
+
+        body.theme-create .form-shell {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 340px;
+            gap: 24px;
+            margin: 0;
+            align-items: start;
+        }
+
+        body.theme-create .form-shell > [class*="col-"] {
+            width: auto;
+            max-width: none;
+            flex: none;
+        }
+
+        body.theme-create .form-main {
+            max-width: 880px;
+            width: 100%;
+        }
+
+        body.theme-create .form-rail {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            position: sticky;
+            top: 88px;
+            align-self: start;
+        }
+
+        body.theme-create .form-rail .content-section {
+            margin-bottom: 0;
+        }
+
+        body.theme-create .form-section {
+            background: var(--surface);
+            border: 1px solid var(--stroke);
+            border-radius: var(--radius-card);
+            padding: 16px;
+            scroll-margin-top: 96px;
+        }
+
+        body.theme-create .form-section + .form-section {
+            margin-top: 16px;
+        }
+
+        body.theme-create .form-section-title {
+            font-family: var(--font-sans);
+            color: var(--ink);
+            font-size: 14px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        body.theme-create .form-section-title i {
+            color: var(--muted);
+        }
+
+        body.theme-create .form-section-grid {
+            display: grid;
+            grid-template-columns: 200px minmax(0, 1fr);
+            gap: 16px;
+            align-items: start;
+        }
+
+        body.theme-create .section-intro h4 {
+            font-family: var(--font-sans);
+            margin: 0 0 6px;
+            font-size: 14px;
+        }
+
+        body.theme-create .section-intro p {
+            color: var(--muted);
+            margin: 0;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        body.theme-create .section-fields {
+            min-width: 0;
+        }
+
+        body.theme-create .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        body.theme-create .form-group {
+            display: grid;
+            gap: 6px;
+            margin: 0;
+        }
+
+        body.theme-create .form-group-full {
+            grid-column: 1 / -1;
+        }
+
+        body.theme-create .form-label {
+            font-weight: 500;
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.2px;
+        }
+
+        body.theme-create .form-label.required::after {
+            content: " *";
+            color: var(--muted);
+            font-weight: 400;
+            font-size: 11px;
+        }
+
+        body.theme-create .text-muted {
+            color: var(--muted);
+        }
+
+        body.theme-create .form-section-title small {
+            font-size: 12px;
+            font-weight: 400;
+        }
+
+        body.theme-create .form-help {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        body.theme-create .form-error {
+            color: var(--error-color);
+            font-size: 12px;
+        }
+
+        body.theme-create input,
+        body.theme-create select,
+        body.theme-create textarea {
+            border: 1px solid var(--stroke);
+            border-radius: var(--radius-input);
+            background: var(--surface);
+            color: var(--ink);
+            padding: 10px 12px;
+            font-size: 14px;
+            line-height: 1.4;
+            width: 100%;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+            box-shadow: none;
+        }
+
+        body.theme-create input:focus,
+        body.theme-create select:focus,
+        body.theme-create textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--ring);
+        }
+
+        body.theme-create textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        body.theme-create .form-actions {
+            border-top: 1px solid var(--stroke);
+            padding-top: 16px;
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        body.theme-create .btn {
+            border-radius: 8px;
+            box-shadow: none;
+            font-weight: 500;
+        }
+
+        body.theme-create .btn.btn-lg {
+            padding: 8px 14px;
+            font-size: 13px;
+        }
+
+        body.theme-create .btn.btn-primary {
+            background: var(--accent);
+            border: 1px solid var(--accent);
+            color: var(--surface);
+            box-shadow: none;
+        }
+
+        body.theme-create .btn.btn-primary:hover {
+            background: var(--accent-strong);
+        }
+
+        body.theme-create .btn.btn-secondary {
+            background: var(--surface);
+            border: 1px solid var(--stroke-strong);
+            color: var(--ink);
+            box-shadow: none;
+        }
+
+        body.theme-create .btn.btn-secondary:hover {
+            background: var(--surface-strong);
+        }
+
+        body.theme-create .btn.btn-text {
+            color: var(--muted-strong);
+        }
+
+        body.theme-create .btn.btn-text:hover {
+            color: var(--ink);
+            background: var(--accent-weak);
+        }
+
+        body.theme-create .form-stepper {
+            display: grid;
+            gap: 8px;
+        }
+
+        body.theme-create .form-stepper .step-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            border: 1px dashed var(--stroke);
+            background: transparent;
+            color: var(--muted-strong);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 13px;
+        }
+
+        body.theme-create .form-stepper .step-item:hover {
+            border-color: var(--stroke-strong);
+            background: var(--accent-weak);
+            color: var(--ink);
+        }
+
+        body.theme-create .form-stepper .step-index {
+            width: 24px;
+            height: 24px;
+            border-radius: 8px;
+            display: grid;
+            place-items: center;
+            background: var(--accent-weak);
+            color: var(--muted-strong);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        body.theme-create .form-overview-note {
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        body.theme-create .preview-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            gap: 8px;
+        }
+
+        body.theme-create .preview-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: var(--surface-strong);
+            border: 1px solid var(--stroke);
+        }
+
+        body.theme-create .preview-label {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        body.theme-create .preview-value {
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--ink);
+            text-align: right;
+        }
+
+        body.theme-create .section-nav {
+            display: grid;
+            gap: 6px;
+        }
+
+        body.theme-create .section-nav a {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            color: var(--muted-strong);
+            font-weight: 500;
+            padding: 6px 8px;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            font-size: 13px;
+        }
+
+        body.theme-create .section-nav a:hover {
+            border-color: var(--stroke);
+            background: var(--accent-weak);
+            color: var(--ink);
+        }
+
+        body.theme-create .section-nav i {
+            color: var(--muted);
+        }
+
+        body.theme-create .help-tips {
+            display: grid;
+            gap: 12px;
+        }
+
+        body.theme-create .help-tip {
+            background: var(--surface-strong);
+            border: 1px solid var(--stroke);
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: none;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        body.theme-create .help-tip-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 9px;
+            display: grid;
+            place-items: center;
+            background: var(--accent-weak);
+            color: var(--muted-strong);
+        }
+
+        body.theme-create .help-tip-content h5 {
+            font-family: var(--font-sans);
+            margin: 0 0 4px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        body.theme-create .help-tip-content p {
+            margin: 0;
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        body.theme-create .quick-actions {
+            display: grid;
+            gap: 10px;
+        }
+
+        body.theme-create .quick-action-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            border-radius: 10px;
+            border: 1px solid var(--stroke);
+            background: var(--surface);
+            color: var(--muted-strong);
+            padding: 10px 12px;
+            box-shadow: none;
+            text-decoration: none;
+            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+        }
+
+        body.theme-create .quick-action-btn:hover {
+            background: var(--accent-weak);
+            color: var(--ink);
+            border-color: var(--stroke-strong);
+            transform: none;
+            box-shadow: none;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            body.theme-create .quick-action-btn {
+                transition: none;
+            }
+        }
+
+        @media (max-width: 1200px) {
+            body.theme-create .form-shell {
+                grid-template-columns: minmax(0, 1fr) 300px;
+            }
+        }
+
+        @media (max-width: 992px) {
+            body.theme-create .page-header {
+                padding-bottom: 16px;
+            }
+            body.theme-create .form-shell {
+                grid-template-columns: 1fr;
+            }
+            body.theme-create .form-rail {
+                position: static;
+            }
+            body.theme-create .form-main {
+                max-width: none;
+            }
+            body.theme-create .form-section-grid {
+                grid-template-columns: 1fr;
+            }
+            body.theme-create .form-actions {
+                justify-content: flex-start;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body.theme-create .content-section-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 6px;
+            }
+            body.theme-create .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body class="page-theme theme-create">
+    <div class="app-layout">
+        <!-- 顶部导航栏 -->
+        {% include 'core/partials/navbar.html' %}
+        
+        <!-- 主要内容区域 -->
+        <main class="app-main">
+            <div class="app-content">
+                <!-- 页面头部 -->
+                <div class="page-header">
+                    <div class="container">
+                        <div class="page-header-content">
+                            <div>
+                                <nav class="breadcrumb">
+                                    <a href="{% url 'project_list' %}" class="breadcrumb-item">
+                                        <i class="fas fa-home"></i>
+                                        课题列表
+                                    </a>
+                                    <span class="breadcrumb-separator">/</span>
+                                    <span class="breadcrumb-item active">创建新课题</span>
+                                </nav>
+                                <h1 class="page-title">
+                                    <i class="fas fa-plus-circle"></i>
+                                    创建新课题
+                                </h1>
+                                <p class="page-subtitle">填写课题基本信息，建立新的科研项目</p>
+                            </div>
+                            <div class="page-actions">
+                                <a href="{% url 'project_list' %}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i>
+                                    返回列表
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 页面内容 -->
+                <div class="page-body">
+                    <div class="container">
+                        <div class="row form-shell">
+                            <div class="col-lg-8 col-xl-9">
+                                <div class="form-main">
+                                    <!-- 主表单 -->
+                                    <div class="content-section content-section-form">
+                                    <div class="content-section-header">
+                                        <h3 class="content-section-title">
+                                            <i class="fas fa-edit"></i>
+                                            课题信息
+                                        </h3>
+                                        <div class="content-section-actions">
+                                            <span class="text-muted">* 为必填项</span>
+                                        </div>
+                                    </div>
+                                    <div class="content-section-body">
+                                        <form method="post" id="project-form" class="form-modern">
+                                            {% csrf_token %}
+                                            
+                                            <!-- 任务书导入 -->
+                                            <div class="form-section" id="section-import">
+                                                <div class="form-section-grid">
+                                                    <div class="section-intro">
+                                                        <h4 class="form-section-title">
+                                                            <i class="fas fa-file-word"></i>
+                                                            任务书导入
+                                                        </h4>
+                                                        <p>上传任务书Word文档，系统将自动解析并预填字段，提交前可手动调整。</p>
+                                                    </div>
+                                                    <div class="section-fields">
+                                                        <div class="form-grid">
+                                                            <div class="form-group form-group-full">
+                                                                <label class="form-label">任务书Word文件</label>
+                                                                <input type="file" id="docx-upload" accept=".doc,.docx">
+                                                                <div class="form-help">支持.doc/.docx格式，解析后将预填课题编号、名称、时间和经费等字段。</div>
+                                                            </div>
+                                                            <div class="form-group form-group-full">
+                                                                <button type="button" class="btn btn-secondary" id="docx-extract-btn">
+                                                                    <i class="fas fa-magic"></i>
+                                                                    解析并预填
+                                                                </button>
+                                                                <div class="form-help" id="docx-extract-status"></div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- 基本信息 -->
+                                            <div class="form-section" id="section-basic">
+                                                <div class="form-section-grid">
+                                                    <div class="section-intro">
+                                                        <h4 class="form-section-title">
+                                                            <i class="fas fa-info-circle"></i>
+                                                            基本信息
+                                                        </h4>
+                                                        <p>确定课题身份与归属，为后续管理建立统一口径。</p>
+                                                    </div>
+                                                    <div class="section-fields">
+                                                        <div class="form-grid">
+                                                    <div class="form-group">
+                                                        <label class="form-label required">课题编号</label>
+                                                        {{ form.project_id }}
+                                                        {% if form.project_id.help_text %}
+                                                            <div class="form-help">{{ form.project_id.help_text }}</div>
+                                                        {% endif %}
+                                                        {% if form.project_id.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.project_id.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    
+                                                    <div class="form-group form-group-full">
+                                                        <label class="form-label required">课题名称</label>
+                                                        {{ form.name }}
+                                                        {% if form.name.help_text %}
+                                                            <div class="form-help">{{ form.name.help_text }}</div>
+                                                        {% endif %}
+                                                        {% if form.name.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.name.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    
+                                                    <div class="form-group">
+                                                        <label class="form-label">课题归属</label>
+                                                        {{ form.ownership }}
+                                                        {% if form.ownership.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.ownership.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    
+                                                    <div class="form-group">
+                                                        <label class="form-label">归口单位</label>
+                                                        {{ form.managing_unit }}
+                                                        {% if form.managing_unit.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.managing_unit.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    
+                                                    <div class="form-group">
+                                                        <label class="form-label">课题级别</label>
+                                                        {{ form.level }}
+                                                        {% if form.level.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.level.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    
+                                                    <div class="form-group">
+                                                        <label class="form-label">课题类型</label>
+                                                        {{ form.project_type }}
+                                                        {% if form.project_type.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.project_type.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 时间和状态 -->
+                                            <div class="form-section" id="section-timeline">
+                                                <div class="form-section-grid">
+                                                    <div class="section-intro">
+                                                        <h4 class="form-section-title">
+                                                            <i class="fas fa-calendar-alt"></i>
+                                                            时间和状态
+                                                        </h4>
+                                                        <p>填写起止年份与当前状态，便于追踪节点。</p>
+                                                    </div>
+                                                    <div class="section-fields">
+                                                        <div class="form-grid">
+                                                    <div class="form-group">
+                                                        <label class="form-label">开始日期</label>
+                                                        {{ form.start_date }}
+                                                        {{ form.start_year.as_hidden }}
+                                                        {% if form.start_date.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.start_date.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                        {% if form.start_year.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.start_year.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    
+                                                    <div class="form-group">
+                                                        <label class="form-label">结束日期</label>
+                                                        {{ form.planned_end_date }}
+                                                        {% if form.planned_end_date.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.planned_end_date.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    
+                                                    <div class="form-group">
+                                                        <label class="form-label">课题状态</label>
+                                                        {{ form.status }}
+                                                        {% if form.status.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.status.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 人员信息 -->
+                                            <div class="form-section" id="section-people">
+                                                <div class="form-section-grid">
+                                                    <div class="section-intro">
+                                                        <h4 class="form-section-title">
+                                                            <i class="fas fa-users"></i>
+                                                            人员信息
+                                                        </h4>
+                                                        <p>明确负责人及角色，便于沟通与协同。</p>
+                                                    </div>
+                                                    <div class="section-fields">
+                                                        <div class="form-grid">
+                                                    <div class="form-group">
+                                                        <label class="form-label">课题负责人</label>
+                                                        {{ form.project_lead }}
+                                                        {% if form.project_lead.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.project_lead.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    
+                                                    <div class="form-group">
+                                                        <label class="form-label">负责人角色</label>
+                                                        {{ form.lead_role }}
+                                                        {% if form.lead_role.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.lead_role.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 预算信息 -->
+                                            <div class="form-section" id="section-budget">
+                                                <div class="form-section-grid">
+                                                    <div class="section-intro">
+                                                        <h4 class="form-section-title">
+                                                            <i class="fas fa-dollar-sign"></i>
+                                                            预算信息
+                                                            <small class="text-muted">(单位：万元)</small>
+                                                        </h4>
+                                                        <p>分项合计应与总预算一致，避免后续审批返工。</p>
+                                                    </div>
+                                                    <div class="section-fields">
+                                                        <div class="form-grid">
+                                                    <div class="form-group">
+                                                        <label class="form-label">总预算</label>
+                                                        {{ form.total_budget }}
+                                                        <div class="form-help">自动计算，单位为万元</div>
+                                                        {% if form.total_budget.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.total_budget.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    
+                                                    <div class="form-group">
+                                                        <label class="form-label">外部专项经费</label>
+                                                        {{ form.external_funding }}
+                                                        {% if form.external_funding.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.external_funding.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    
+                                                    <div class="form-group">
+                                                        <label class="form-label">院自筹经费</label>
+                                                        {{ form.institute_funding }}
+                                                        {% if form.institute_funding.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.institute_funding.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    
+                                                    <div class="form-group">
+                                                        <label class="form-label">所属单位自筹经费</label>
+                                                        {{ form.unit_funding }}
+                                                        {% if form.unit_funding.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.unit_funding.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 表单操作 -->
+                                            <div class="form-actions">
+                                                <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">
+                                                    <i class="fas fa-save"></i>
+                                                    <span class="btn-text">创建课题</span>
+                                                </button>
+                                                <a href="{% url 'project_list' %}" class="btn btn-secondary btn-lg">
+                                                    <i class="fas fa-times"></i>
+                                                    取消
+                                                </a>
+                                                <button type="button" class="btn btn-text" id="reset-btn">
+                                                    <i class="fas fa-undo"></i>
+                                                    重置表单
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-lg-4 col-xl-3 form-rail">
+                                <div class="content-section content-section-muted">
+                                    <div class="content-section-header">
+                                        <h3 class="content-section-title">
+                                            <i class="fas fa-route"></i>
+                                            填写导航
+                                        </h3>
+                                    </div>
+                                    <div class="content-section-body">
+                                        <div class="form-stepper">
+                                            <a class="step-item" href="#section-basic">
+                                                <span class="step-index">1</span>
+                                                <span>基本信息</span>
+                                            </a>
+                                            <a class="step-item" href="#section-timeline">
+                                                <span class="step-index">2</span>
+                                                <span>时间与状态</span>
+                                            </a>
+                                            <a class="step-item" href="#section-people">
+                                                <span class="step-index">3</span>
+                                                <span>人员信息</span>
+                                            </a>
+                                            <a class="step-item" href="#section-budget">
+                                                <span class="step-index">4</span>
+                                                <span>预算信息</span>
+                                            </a>
+                                        </div>
+                                        <div class="form-overview-note">提示：带 * 的字段为必填项。</div>
+                                    </div>
+                                </div>
+
+                                <div class="content-section">
+                                    <div class="content-section-header">
+                                        <h3 class="content-section-title">
+                                            <i class="fas fa-clipboard-check"></i>
+                                            填写概览
+                                        </h3>
+                                    </div>
+                                    <div class="content-section-body">
+                                        <ul class="preview-list">
+                                            <li class="preview-item">
+                                                <span class="preview-label">课题编号</span>
+                                                <span class="preview-value" id="preview-project-id">未填写</span>
+                                            </li>
+                                            <li class="preview-item">
+                                                <span class="preview-label">课题名称</span>
+                                                <span class="preview-value" id="preview-project-name">未填写</span>
+                                            </li>
+                                            <li class="preview-item">
+                                                <span class="preview-label">负责人</span>
+                                                <span class="preview-value" id="preview-project-lead">未填写</span>
+                                            </li>
+                                            <li class="preview-item">
+                                                <span class="preview-label">课题状态</span>
+                                                <span class="preview-value" id="preview-project-status">未选择</span>
+                                            </li>
+                                            <li class="preview-item">
+                                                <span class="preview-label">年份范围</span>
+                                                <span class="preview-value" id="preview-project-years">未填写</span>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <div class="content-section content-section-muted">
+                                    <div class="content-section-header">
+                                        <h3 class="content-section-title">
+                                            <i class="fas fa-layer-group"></i>
+                                            章节导航
+                                        </h3>
+                                    </div>
+                                    <div class="content-section-body">
+                                        <div class="section-nav">
+                                            <a href="#section-basic"><i class="fas fa-info-circle"></i> 基本信息</a>
+                                            <a href="#section-timeline"><i class="fas fa-calendar-alt"></i> 时间与状态</a>
+                                            <a href="#section-people"><i class="fas fa-users"></i> 人员信息</a>
+                                            <a href="#section-budget"><i class="fas fa-wallet"></i> 预算信息</a>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 侧边栏帮助信息 -->
+                                <div class="content-section">
+                                    <div class="content-section-header">
+                                        <h3 class="content-section-title">
+                                            <i class="fas fa-lightbulb"></i>
+                                            填写提示
+                                        </h3>
+                                    </div>
+                                    <div class="content-section-body">
+                                        <div class="help-tips">
+                                            <div class="help-tip">
+                                                <div class="help-tip-icon">
+                                                    <i class="fas fa-id-card"></i>
+                                                </div>
+                                                <div class="help-tip-content">
+                                                    <h5>课题编号</h5>
+                                                    <p>请输入唯一的课题编号，建议使用年份+序号的格式，如：2024001</p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="help-tip">
+                                                <div class="help-tip-icon">
+                                                    <i class="fas fa-file-alt"></i>
+                                                </div>
+                                                <div class="help-tip-content">
+                                                    <h5>课题名称</h5>
+                                                    <p>请输入完整的课题名称，建议不超过100个字符</p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="help-tip">
+                                                <div class="help-tip-icon">
+                                                    <i class="fas fa-calculator"></i>
+                                                </div>
+                                                <div class="help-tip-content">
+                                                    <h5>预算信息</h5>
+                                                    <p>所有预算金额单位为万元，请确保各项经费之和等于总预算</p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="help-tip">
+                                                <div class="help-tip-icon">
+                                                    <i class="fas fa-clock"></i>
+                                                </div>
+                                                <div class="help-tip-content">
+                                                    <h5>时间设置</h5>
+                                                    <p>结束年份应大于或等于开始年份</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 快速操作 -->
+                                <div class="content-section">
+                                    <div class="content-section-header">
+                                        <h3 class="content-section-title">
+                                            <i class="fas fa-bolt"></i>
+                                            快速操作
+                                        </h3>
+                                    </div>
+                                    <div class="content-section-body">
+                                        <div class="quick-actions">
+                                            <button type="button" class="quick-action-btn" id="auto-fill-demo">
+                                                <i class="fas fa-magic"></i>
+                                                <span>填充示例数据</span>
+                                            </button>
+                                            <button type="button" class="quick-action-btn" id="save-draft">
+                                                <i class="fas fa-save"></i>
+                                                <span>保存草稿</span>
+                                            </button>
+                                            <a href="{% url 'import_from_excel' %}" class="quick-action-btn">
+                                                <i class="fas fa-file-excel"></i>
+                                                <span>批量导入</span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        // 表单验证和提交
+        document.getElementById('project-form').addEventListener('submit', function(e) {
+            const submitBtn = document.getElementById('submit-btn');
+            const btnText = submitBtn.querySelector('.btn-text');
+
+            syncStartYear();
+            updateTotalBudget();
+            
+            // 显示加载状态
+            submitBtn.disabled = true;
+            btnText.textContent = '创建中...';
+            submitBtn.querySelector('i').className = 'fas fa-spinner fa-spin';
+        });
+
+        function syncStartYear() {
+            const startDateField = document.querySelector('input[name="start_date"]');
+            const startYearField = document.querySelector('input[name="start_year"]');
+            if (!startDateField || !startYearField) {
+                return;
+            }
+            const value = startDateField.value;
+            if (value) {
+                startYearField.value = value.split('-')[0];
+            } else {
+                startYearField.value = '';
+            }
+        }
+
+        function updateTotalBudget() {
+            const totalField = document.querySelector('input[name="total_budget"]');
+            if (!totalField) {
+                return;
+            }
+
+            const externalField = document.querySelector('input[name="external_funding"]');
+            const instituteField = document.querySelector('input[name="institute_funding"]');
+            const unitField = document.querySelector('input[name="unit_funding"]');
+
+            const externalFunding = externalField ? parseFloat(externalField.value) || 0 : 0;
+            const instituteFunding = instituteField ? parseFloat(instituteField.value) || 0 : 0;
+            const unitFunding = unitField ? parseFloat(unitField.value) || 0 : 0;
+            const sumFunding = externalFunding + instituteFunding + unitFunding;
+
+            const hasAnyValue = [externalField, instituteField, unitField].some(field => field && field.value.trim() !== '');
+            totalField.value = hasAnyValue ? sumFunding.toFixed(2) : '';
+        }
+
+        function setTotalBudgetReadonly() {
+            const totalField = document.querySelector('input[name="total_budget"]');
+            if (!totalField) {
+                return;
+            }
+            totalField.readOnly = true;
+            totalField.placeholder = '自动计算';
+        }
+
+        function getFieldText(selector, fallback) {
+            const field = document.querySelector(selector);
+            if (!field) {
+                return fallback;
+            }
+            if (field.tagName === 'SELECT') {
+                const option = field.options[field.selectedIndex];
+                const value = option ? option.text.trim() : '';
+                return value || fallback;
+            }
+            const value = field.value ? field.value.trim() : '';
+            return value || fallback;
+        }
+
+        function updatePreview() {
+            const projectId = getFieldText('input[name="project_id"]', '未填写');
+            const projectName = getFieldText('input[name="name"]', '未填写');
+            const projectLead = getFieldText('input[name="project_lead"]', '未填写');
+            const projectStatus = getFieldText('select[name="status"]', '未选择');
+            const startDate = getFieldText('input[name="start_date"]', '');
+            const endDate = getFieldText('input[name="planned_end_date"]', '');
+            const yearRange = (startDate || endDate) ? `${startDate || '—'} - ${endDate || '—'}` : '未填写';
+
+            const idEl = document.getElementById('preview-project-id');
+            const nameEl = document.getElementById('preview-project-name');
+            const leadEl = document.getElementById('preview-project-lead');
+            const statusEl = document.getElementById('preview-project-status');
+            const yearsEl = document.getElementById('preview-project-years');
+
+            if (idEl) idEl.textContent = projectId;
+            if (nameEl) nameEl.textContent = projectName;
+            if (leadEl) leadEl.textContent = projectLead;
+            if (statusEl) statusEl.textContent = projectStatus;
+            if (yearsEl) yearsEl.textContent = yearRange;
+        }
+
+        function bindPreviewUpdates() {
+            const fields = [
+                'input[name="project_id"]',
+                'input[name="name"]',
+                'input[name="project_lead"]',
+                'input[name="start_date"]',
+                'input[name="planned_end_date"]',
+                'select[name="status"]'
+            ];
+
+            fields.forEach(selector => {
+                const field = document.querySelector(selector);
+                if (!field) {
+                    return;
+                }
+                field.addEventListener('input', updatePreview);
+                field.addEventListener('change', updatePreview);
+            });
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        function setFieldValue(fieldName, value) {
+            if (value === null || value === undefined || value === '') {
+                return false;
+            }
+            const field = document.querySelector(`[name="${fieldName}"]`);
+            if (!field) {
+                return false;
+            }
+            if (field.tagName === 'SELECT') {
+                const options = Array.from(field.options);
+                const match = options.find(option => option.value === value || option.text.trim() === value);
+                if (match) {
+                    field.value = match.value;
+                    return true;
+                }
+                return false;
+            }
+            field.value = value;
+            return true;
+        }
+
+        function applyExtractedData(data) {
+            const filled = [];
+            Object.entries(data || {}).forEach(([key, value]) => {
+                if (setFieldValue(key, value)) {
+                    filled.push(key);
+                }
+            });
+            syncStartYear();
+            updateTotalBudget();
+            updatePreview();
+            return filled;
+        }
+
+        function setExtractStatus(message, isError) {
+            const statusEl = document.getElementById('docx-extract-status');
+            if (!statusEl) {
+                return;
+            }
+            statusEl.textContent = message || '';
+            statusEl.style.color = isError ? 'var(--error-color)' : '';
+        }
+
+        function bindDocxExtract() {
+            const extractBtn = document.getElementById('docx-extract-btn');
+            const uploadInput = document.getElementById('docx-upload');
+            if (!extractBtn || !uploadInput) {
+                return;
+            }
+            const fieldLabels = {
+                project_id: '课题编号',
+                name: '课题名称',
+                managing_unit: '归口单位',
+                ownership: '课题归属',
+                project_lead: '课题负责人',
+                contact_person: '课题联系人',
+                start_date: '开始日期',
+                planned_end_date: '计划结束日期',
+                total_budget: '总预算',
+                external_funding: '专项经费',
+                institute_funding: '院专项经费',
+                unit_funding: '自筹经费',
+                research_content_manual: '主要研究内容'
+            };
+
+            extractBtn.addEventListener('click', () => {
+                const file = uploadInput.files[0];
+                if (!file) {
+                    setExtractStatus('请先选择要解析的Word文件。', true);
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('document', file);
+
+                extractBtn.disabled = true;
+                setExtractStatus('正在解析文档，请稍候...', false);
+
+                fetch('{% url "extract_task_docx" %}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) {
+                        setExtractStatus(data.message || '解析失败，请检查文件。', true);
+                        return;
+                    }
+                    const filled = applyExtractedData(data.data || {});
+                    if (filled.length) {
+                        const labelText = filled.map(key => fieldLabels[key] || key).join('、');
+                        setExtractStatus(`已预填字段：${labelText}`, false);
+                    } else {
+                        setExtractStatus('解析成功，但未发现可预填字段。', false);
+                    }
+                })
+                .catch(() => {
+                    setExtractStatus('解析请求失败，请稍后重试。', true);
+                })
+                .finally(() => {
+                    extractBtn.disabled = false;
+                });
+            });
+        }
+        
+        // 重置表单
+        document.getElementById('reset-btn').addEventListener('click', function() {
+            if (confirm('确定要重置表单吗？所有已填写的内容将被清空。')) {
+                document.getElementById('project-form').reset();
+                syncStartYear();
+                updateTotalBudget();
+                updatePreview();
+            }
+        });
+        
+        // 自动填充示例数据
+        document.getElementById('auto-fill-demo').addEventListener('click', function() {
+            const currentYear = new Date().getFullYear();
+            const randomId = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            
+            document.querySelector('input[name="project_id"]').value = `${currentYear}${randomId}`;
+            document.querySelector('input[name="name"]').value = '基于人工智能的科研数据分析平台研究';
+            document.querySelector('input[name="ownership"]').value = '中科院';
+            document.querySelector('input[name="managing_unit"]').value = '信息技术研究所';
+            document.querySelector('select[name="level"]').value = '国家级';
+            document.querySelector('select[name="project_type"]').value = '基础研究';
+            document.querySelector('input[name="start_date"]').value = `${currentYear}-01-01`;
+            document.querySelector('input[name="planned_end_date"]').value = `${currentYear + 3}-12-31`;
+            document.querySelector('select[name="status"]').value = '在研';
+            document.querySelector('input[name="project_lead"]').value = '张三';
+            document.querySelector('select[name="lead_role"]').value = '研究员';
+            document.querySelector('input[name="total_budget"]').value = '100.0';
+            document.querySelector('input[name="external_funding"]').value = '60.0';
+            document.querySelector('input[name="institute_funding"]').value = '25.0';
+            document.querySelector('input[name="unit_funding"]').value = '15.0';
+            syncStartYear();
+            updateTotalBudget();
+            updatePreview();
+        });
+        
+        // 保存草稿功能（模拟）
+        document.getElementById('save-draft').addEventListener('click', function() {
+            const formData = new FormData(document.getElementById('project-form'));
+            const draftData = {};
+            
+            for (let [key, value] of formData.entries()) {
+                draftData[key] = value;
+            }
+            
+            localStorage.setItem('project_draft', JSON.stringify(draftData));
+            
+            // 显示成功消息
+            const btn = this;
+            const originalText = btn.querySelector('span').textContent;
+            btn.querySelector('span').textContent = '已保存';
+            btn.querySelector('i').className = 'fas fa-check';
+            
+            setTimeout(() => {
+                btn.querySelector('span').textContent = originalText;
+                btn.querySelector('i').className = 'fas fa-save';
+            }, 2000);
+        });
+        
+        // 页面加载时恢复草稿
+        document.addEventListener('DOMContentLoaded', function() {
+            const draftData = localStorage.getItem('project_draft');
+            if (draftData) {
+                try {
+                    const data = JSON.parse(draftData);
+                    for (let [key, value] of Object.entries(data)) {
+                        const field = document.querySelector(`[name="${key}"]`);
+                        if (field) {
+                            field.value = value;
+                        }
+                    }
+                } catch (e) {
+                    console.log('无法恢复草稿数据');
+                }
+            }
+            
+            // 页面加载动画
+            document.body.classList.add('animate-fade-in');
+            bindPreviewUpdates();
+            bindDocxExtract();
+            updatePreview();
+            syncStartYear();
+            updateTotalBudget();
+            setTotalBudgetReadonly();
+        });
+        
+        // 全局搜索功能
+        document.getElementById('global-search').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const searchValue = this.value.trim();
+                if (searchValue) {
+                    window.location.href = `{% url 'project_list' %}?q=${encodeURIComponent(searchValue)}`;
+                }
+            }
+        });
+        
+        // 实时预算计算
+        const budgetFields = ['external_funding', 'institute_funding', 'unit_funding'];
+        budgetFields.forEach(fieldName => {
+            const field = document.querySelector(`input[name="${fieldName}"]`);
+            if (field) {
+                field.addEventListener('input', updateTotalBudget);
+                field.addEventListener('change', updateTotalBudget);
+            }
+        });
+
+        const startDateField = document.querySelector('input[name="start_date"]');
+        if (startDateField) {
+            startDateField.addEventListener('change', syncStartYear);
+        }
+    </script>
+</body>
+</html>

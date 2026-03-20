@@ -1,0 +1,103 @@
+.expense-filter-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-end;
+}
+
+.expense-filter-form .form-group {
+    min-width: 220px;
+    margin-bottom: 0;
+}
+
+.expense-upload-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-end;
+    margin-top: 16px;
+}
+
+.expense-upload-form .form-group {
+    min-width: 280px;
+    margin-bottom: 0;
+}
+
+.expense-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.expense-meta-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--stroke);
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: grid;
+    gap: 6px;
+}
+
+.expense-meta-card .label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.expense-meta-card .value {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.expense-table .text-muted {
+    color: var(--text-secondary);
+}
+
+.expense-alert-row {
+    background: var(--warning-light);
+}
+
+.expense-over-row {
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.mapping-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.mapping-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.mapping-form .form-control {
+    min-width: 200px;
+}
+
+.table-footnote {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.expense-company-section .content-section-header {
+    align-items: center;
+}
+
+@media (max-width: 768px) {
+    .expense-filter-form {
+        align-items: stretch;
+    }
+
+    .expense-upload-form {
+        align-items: stretch;
+    }
+
+    .mapping-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}

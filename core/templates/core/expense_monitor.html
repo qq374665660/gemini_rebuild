@@ -1,0 +1,380 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>课题支出监控 - 科研课题管理系统</title>
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/components.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/expense-monitor.css' %}?v=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-layout">
+        {% include 'core/partials/navbar.html' %}
+
+        <main class="app-main">
+            <div class="app-content">
+                <div class="page-header">
+                    <div class="container">
+                        <div class="page-header-content">
+                            <div>
+                                <h1 class="page-title">
+                                    <i class="fas fa-coins"></i>
+                                    课题支出监控
+                                </h1>
+                                <p class="page-subtitle">
+                                    数据来源：{{ file_path }} | 工作表：{{ sheet_name }}
+                                </p>
+                            </div>
+                            <div class="page-actions">
+                                <a href="{% url 'project_list' %}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i>
+                                    返回课题列表
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="page-body">
+                    <div class="container">
+                        {% if messages %}
+                            {% for message in messages %}
+                                <div class="alert alert-{{ message.tags }}">
+                                    <i class="fas fa-{% if message.tags == 'success' %}check-circle{% elif message.tags == 'error' %}exclamation-circle{% else %}info-circle{% endif %}"></i>
+                                    {{ message }}
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-card-icon">
+                                    <i class="fas fa-database"></i>
+                                </div>
+                                <div class="stat-card-value">{{ total_rows }}</div>
+                                <div class="stat-card-label">明细记录数</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-card-icon">
+                                    <i class="fas fa-link"></i>
+                                </div>
+                                <div class="stat-card-value">{{ company_groups|length }}</div>
+                                <div class="stat-card-label">归口单位分组数</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-card-icon">
+                                    <i class="fas fa-scale-balanced"></i>
+                                </div>
+                                <div class="stat-card-value">{{ total_expense_sum|floatformat:2 }}</div>
+                                <div class="stat-card-label">累计支出合计({{ expense_unit_label }})</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-card-icon">
+                                    <i class="fas fa-triangle-exclamation"></i>
+                                </div>
+                                <div class="stat-card-value">{{ negative_total }}</div>
+                                <div class="stat-card-label">负数记录提示</div>
+                            </div>
+                        </div>
+
+                        <div class="content-section">
+                            <div class="content-section-header">
+                                <h3 class="content-section-title">
+                                    <i class="fas fa-sliders"></i>
+                                    匹配设置
+                                </h3>
+                            </div>
+                            <div class="content-section-body">
+                                <form method="get" class="expense-filter-form">
+                                    <div class="form-group">
+                                        <label for="threshold">匹配阈值 (0.50 - 0.98)</label>
+                                        <input type="number" id="threshold" name="threshold" class="form-control" min="0.5" max="0.98" step="0.01" value="{{ threshold }}">
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-rotate-right"></i>
+                                        重新匹配
+                                    </button>
+                                </form>
+                                <form method="post" action="{% url 'expense_import' %}" enctype="multipart/form-data" class="expense-upload-form">
+                                    {% csrf_token %}
+                                    <div class="form-group">
+                                        <label for="expense_file">导入支出表格</label>
+                                        <input type="file" id="expense_file" name="expense_file" class="form-control" accept=".xlsx,.xls" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-secondary">
+                                        <i class="fas fa-file-import"></i>
+                                        上传并更新
+                                    </button>
+                                </form>
+                                <div class="expense-meta-grid">
+                                    <div class="expense-meta-card">
+                                        <span class="label">文件更新时间</span>
+                                        <span class="value">{% if file_mtime %}{{ file_mtime|date:"Y-m-d H:i" }}{% else %}-{% endif %}</span>
+                                    </div>
+                                    <div class="expense-meta-card">
+                                        <span class="label">最近快照时间</span>
+                                        <span class="value">{% if latest_import %}{{ latest_import.created_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}</span>
+                                    </div>
+                                    <div class="expense-meta-card">
+                                        <span class="label">对比基准时间</span>
+                                        <span class="value">{% if comparison_time %}{{ comparison_time|date:"Y-m-d H:i" }}{% else %}-{% endif %}</span>
+                                    </div>
+                                    <div class="expense-meta-card">
+                                        <span class="label">未匹配记录</span>
+                                        <span class="value">{{ unmatched_total }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="content-section">
+                            <div class="content-section-header">
+                                <h3 class="content-section-title">
+                                    <i class="fas fa-flag"></i>
+                                    结题后费用增长提示
+                                </h3>
+                            </div>
+                            <div class="content-section-body">
+                                {% if growth_alerts %}
+                                    <div class="table-responsive">
+                                        <table class="table expense-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>归口单位</th>
+                                                    <th>课题名称</th>
+                                                    <th>结题日期</th>
+                                                    <th>上期支出({{ expense_unit_label }})</th>
+                                                    <th>本期支出({{ expense_unit_label }})</th>
+                                                    <th>增长值({{ expense_unit_label }})</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for item in growth_alerts %}
+                                                <tr class="expense-alert-row">
+                                                    <td>{{ item.group_name }}</td>
+                                                    <td>{{ item.project_name }}</td>
+                                                    <td>{% if item.completion_date %}{{ item.completion_date|date:"Y-m-d" }}{% else %}-{% endif %}</td>
+                                                    <td>{{ item.previous_total|floatformat:2 }}</td>
+                                                    <td>{{ item.current_total|floatformat:2 }}</td>
+                                                    <td class="text-danger">{{ item.increase|floatformat:2 }}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                {% else %}
+                                    <div class="empty-state">
+                                        <i class="fas fa-check-circle"></i>
+                                        <p>暂无结题后费用增长记录</p>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="content-section">
+                            <div class="content-section-header">
+                                <h3 class="content-section-title">
+                                    <i class="fas fa-triangle-exclamation"></i>
+                                    超预算提示
+                                </h3>
+                            </div>
+                            <div class="content-section-body">
+                                {% if over_budget_alerts %}
+                                    <div class="table-responsive">
+                                        <table class="table expense-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>归口单位</th>
+                                                    <th>课题名称</th>
+                                                    <th>预算({{ expense_unit_label }})</th>
+                                                    <th>累计支出({{ expense_unit_label }})</th>
+                                                    <th>超出({{ expense_unit_label }})</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for item in over_budget_alerts %}
+                                                <tr class="expense-over-row">
+                                                    <td>{{ item.group_name }}</td>
+                                                    <td>{{ item.project_name }}</td>
+                                                    <td>{{ item.budget_value|floatformat:2 }}</td>
+                                                    <td>{{ item.total|floatformat:2 }}</td>
+                                                    <td class="text-danger">{{ item.over_amount|floatformat:2 }}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                {% else %}
+                                    <div class="empty-state">
+                                        <i class="fas fa-check-circle"></i>
+                                        <p>暂无超预算记录</p>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        {% if company_groups %}
+                            {% for group in company_groups %}
+                                <div class="content-section expense-company-section">
+                                    <div class="content-section-header">
+                                        <h3 class="content-section-title">
+                                            <i class="fas fa-building"></i>
+                                            归口单位：{{ group.company }}
+                                        </h3>
+                                        <div class="content-section-actions">
+                                            <span class="badge badge-primary">合计 {{ group.total|floatformat:2 }} {{ expense_unit_label }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="content-section-body">
+                                        <div class="table-responsive">
+                                            <table class="table expense-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>课题名称</th>
+                                                        <th>累计支出({{ expense_unit_label }})</th>
+                                                        <th>预算({{ expense_unit_label }})</th>
+                                                        <th>超出({{ expense_unit_label }})</th>
+                                                        <th>匹配分数</th>
+                                                        <th>样本描述</th>
+                                                        <th>结题日期</th>
+                                                        <th>记录数</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for item in group.rows %}
+                                                    <tr class="{% if item.over_budget %}expense-over-row{% endif %}">
+                                                        <td>
+                                                            <a href="{% url 'project_detail' item.project_id %}">{{ item.project_name }}</a>
+                                                        </td>
+                                                        <td>{{ item.total|floatformat:2 }}</td>
+                                                        <td>{% if item.budget_value %}{{ item.budget_value|floatformat:2 }}{% else %}-{% endif %}</td>
+                                                        <td>{% if item.over_budget %}<span class="text-danger">{{ item.over_amount|floatformat:2 }}</span>{% else %}-{% endif %}</td>
+                                                        <td>{{ item.max_score|floatformat:2 }}</td>
+                                                        <td class="text-muted">{{ item.sample_desc }}</td>
+                                                        <td>{% if item.completion_date %}{{ item.completion_date|date:"Y-m-d" }}{% else %}-{% endif %}</td>
+                                                        <td>{{ item.row_count }}</td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="empty-state">
+                                <i class="fas fa-folder-open"></i>
+                                <p>暂无可匹配的支出记录</p>
+                            </div>
+                        {% endif %}
+
+                        <div class="content-section">
+                            <div class="content-section-header">
+                                <h3 class="content-section-title">
+                                    <i class="fas fa-circle-exclamation"></i>
+                                    未匹配记录 ({{ unmatched_total }})
+                                </h3>
+                            </div>
+                            <div class="content-section-body">
+                                {% if unmatched_rows %}
+                                    <div class="table-responsive">
+                                        <table class="table expense-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>公司</th>
+                                                    <th>课题描述</th>
+                                                    <th>期末余额({{ expense_unit_label }})</th>
+                                                    <th>最接近课题</th>
+                                                    <th>匹配分数</th>
+                                                    <th>手工映射</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for row in unmatched_rows %}
+                                                <tr>
+                                                    <td>{{ row.company }}</td>
+                                                    <td class="text-muted">{{ row.description }}</td>
+                                                    <td>{{ row.amount|floatformat:2 }}</td>
+                                                    <td>{{ row.best_name }}</td>
+                                                    <td>{{ row.best_score|floatformat:2 }}</td>
+                                                    <td>
+                                                        <form method="post" action="{% url 'expense_mapping' %}" class="mapping-form">
+                                                            {% csrf_token %}
+                                                            <input type="hidden" name="description" value="{{ row.description }}">
+                                                            <input type="hidden" name="threshold" value="{{ threshold }}">
+                                                            <div class="mapping-controls">
+                                                                <select name="project_id" class="form-control form-control-sm">
+                                                                    <option value="">选择课题</option>
+                                                                    {% for pid, pname in project_options %}
+                                                                        <option value="{{ pid }}">{{ pname }}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                <button type="submit" class="btn btn-sm btn-primary">映射</button>
+                                                            </div>
+                                                        </form>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div class="table-footnote">仅展示前 200 条未匹配记录</div>
+                                {% else %}
+                                    <div class="empty-state">
+                                        <i class="fas fa-check"></i>
+                                        <p>未发现未匹配记录</p>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="content-section">
+                            <div class="content-section-header">
+                                <h3 class="content-section-title">
+                                    <i class="fas fa-triangle-exclamation"></i>
+                                    负数记录提示 ({{ negative_total }})
+                                </h3>
+                            </div>
+                            <div class="content-section-body">
+                                {% if negative_rows %}
+                                    <div class="table-responsive">
+                                        <table class="table expense-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>公司</th>
+                                                    <th>课题描述</th>
+                                                    <th>期末余额({{ expense_unit_label }})</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for row in negative_rows %}
+                                                <tr>
+                                                    <td>{{ row.company }}</td>
+                                                    <td class="text-muted">{{ row.description }}</td>
+                                                    <td class="text-danger">{{ row.amount|floatformat:2 }}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div class="table-footnote">仅展示前 200 条负数记录</div>
+                                {% else %}
+                                    <div class="empty-state">
+                                        <i class="fas fa-check"></i>
+                                        <p>未发现负数记录</p>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

@@ -1,0 +1,468 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI API配置管理 - 科研课题管理系统</title>
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/components.css' %}?v=2.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Navigation -->
+        {% include 'core/partials/navbar.html' %}
+
+        <!-- Main Content -->
+        <div class="app-main">
+            <div class="app-content">
+                <div class="container">
+                    <main class="main-content">
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="page-title">
+                    <h1><i class="fas fa-cog"></i> AI API配置管理</h1>
+                    <p>配置和管理AI分析服务</p>
+                </div>
+                <div class="page-actions">
+                    <a href="{% url 'project_list' %}" class="btn btn-outline">
+                        <i class="fas fa-arrow-left"></i>
+                        返回课题列表
+                    </a>
+                </div>
+            </div>
+        
+            <!-- 消息显示 -->
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }}">
+                        <div class="alert-icon">
+                            {% if message.tags == 'success' %}
+                                <i class="fas fa-check-circle"></i>
+                            {% elif message.tags == 'error' %}
+                                <i class="fas fa-exclamation-triangle"></i>
+                            {% elif message.tags == 'warning' %}
+                                <i class="fas fa-exclamation-circle"></i>
+                            {% else %}
+                                <i class="fas fa-info-circle"></i>
+                            {% endif %}
+                        </div>
+                        <div class="alert-content">
+                            {{ message }}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+            
+            <!-- API服务信息 -->
+            <div class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-info-circle"></i> 支持的AI服务</h2>
+                    <p>配置AI分析服务以启用智能文档分析功能</p>
+                </div>
+                <div class="alert alert-info">
+                    <div class="alert-icon">
+                        <i class="fas fa-lightbulb"></i>
+                    </div>
+                    <div class="alert-content">
+                        <h5>服务说明</h5>
+                        <ul>
+                            <li><strong>DeepSeek:</strong> 专业的AI模型，适合复杂文档分析。获取API密钥：<a href="https://platform.deepseek.com/" target="_blank">https://platform.deepseek.com/</a></li>
+                            <li><strong>Kimi (Moonshot):</strong> 中文理解能力强，适合中文科研文档。获取API密钥：<a href="https://platform.moonshot.cn/" target="_blank">https://platform.moonshot.cn/</a></li>
+                            <li><strong>注意：</strong> API密钥将被加密存储，系统优先使用DeepSeek，失败时自动切换到Kimi。</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        
+            <!-- 新增配置表单 -->
+            <div class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-plus-circle"></i> 添加/更新API配置</h2>
+                    <p>配置新的AI服务或更新现有配置</p>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <form method="post">
+                            {% csrf_token %}
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="service_name"><i class="fas fa-robot"></i> AI服务</label>
+                                        <select name="service_name" id="service_name" class="form-control" required>
+                                            <option value="">请选择服务</option>
+                                            {% for value, label in service_choices %}
+                                                <option value="{{ value }}">{{ label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <div class="service-description" id="service-description" style="display: none; margin-top: 8px; padding: 8px; background: var(--bg-tertiary); border-radius: var(--radius-sm); font-size: 14px; color: var(--text-tertiary);"></div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="api_key"><i class="fas fa-key"></i> API密钥</label>
+                                        <input type="password" name="api_key" id="api_key" class="form-control" placeholder="sk-xxxxxxxxxxxxxxxx" required>
+                                        <small class="form-text text-muted">API密钥将被加密存储</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" name="action" value="save" class="btn btn-primary">
+                                    <i class="fas fa-save"></i>
+                                    保存配置
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        
+            <!-- 现有配置列表 -->
+            <div class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-list"></i> 已配置的API服务</h2>
+                    <p>管理现有的AI服务配置</p>
+                </div>
+                {% if configs %}
+                    <div class="row">
+                        {% for config in configs %}
+                            <div class="col-lg-6">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h4>
+                                            <i class="fas fa-robot"></i>
+                                            {{ config.get_service_name_display }}
+                                        </h4>
+                                        <div class="card-header-actions">
+                                            <span class="badge {% if config.is_active %}badge-success{% else %}badge-secondary{% endif %}">
+                                                {% if config.is_active %}
+                                                    <i class="fas fa-check"></i> 已启用
+                                                {% else %}
+                                                    <i class="fas fa-pause"></i> 已禁用
+                                                {% endif %}
+                                            </span>
+                                            {% if config.last_test_time %}
+                                                <span class="badge {% if config.test_success %}badge-success{% else %}badge-danger{% endif %}">
+                                                    {% if config.test_success %}
+                                                        <i class="fas fa-check-circle"></i> 测试通过
+                                                    {% else %}
+                                                        <i class="fas fa-times-circle"></i> 测试失败
+                                                    {% endif %}
+                                                </span>
+                                            {% else %}
+                                                <span class="badge badge-warning">
+                                                    <i class="fas fa-question-circle"></i> 未测试
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="config-meta">
+                                            <div class="meta-item">
+                                                <i class="fas fa-calendar-plus"></i>
+                                                <span>创建时间：{{ config.created_at|date:"Y-m-d H:i" }}</span>
+                                            </div>
+                                            {% if config.last_test_time %}
+                                                <div class="meta-item">
+                                                    <i class="fas fa-vial"></i>
+                                                    <span>最后测试：{{ config.last_test_time|date:"Y-m-d H:i" }}</span>
+                                                </div>
+                                            {% else %}
+                                                <div class="meta-item">
+                                                    <i class="fas fa-vial"></i>
+                                                    <span>最后测试：未测试</span>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="card-footer">
+                                        <div class="btn-group">
+                                            <form method="post" style="display: inline;">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="service_name" value="{{ config.service_name }}">
+                                                <button type="submit" name="action" value="test" class="btn btn-sm btn-success">
+                                                    <i class="fas fa-vial"></i>
+                                                    测试连接
+                                                </button>
+                                            </form>
+                                            <form method="post" style="display: inline;">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="service_name" value="{{ config.service_name }}">
+                                                <button type="submit" name="action" value="toggle" class="btn btn-sm {% if config.is_active %}btn-warning{% else %}btn-secondary{% endif %}">
+                                                    {% if config.is_active %}
+                                                        <i class="fas fa-pause"></i>
+                                                        禁用
+                                                    {% else %}
+                                                        <i class="fas fa-play"></i>
+                                                        启用
+                                                    {% endif %}
+                                                </button>
+                                            </form>
+                                            <form method="post" style="display: inline;" class="delete-form">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="service_name" value="{{ config.service_name }}">
+                                                <button type="submit" name="action" value="delete" class="btn btn-sm btn-danger">
+                                                    <i class="fas fa-trash"></i>
+                                                    删除
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">
+                                    <i class="fas fa-robot"></i>
+                                </div>
+                                <h5>暂无配置的API服务</h5>
+                                <p>请在上方添加AI服务配置以启用智能分析功能。</p>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        
+            <!-- 使用说明 -->
+            <div class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-book"></i> 使用说明</h2>
+                    <p>了解如何配置和使用AI服务</p>
+                </div>
+                
+                <div class="row">
+                    <div class="col-lg-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h4><i class="fas fa-cog"></i> 配置步骤</h4>
+                            </div>
+                            <div class="card-body">
+                                <ol class="instruction-list">
+                                    <li>选择要配置的AI服务类型</li>
+                                    <li>输入对应的API密钥</li>
+                                    <li>点击"保存配置"按钮</li>
+                                    <li>使用"测试连接"验证配置是否正确</li>
+                                    <li>启用服务开始使用AI分析功能</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h4><i class="fas fa-exclamation-triangle"></i> 注意事项</h4>
+                            </div>
+                            <div class="card-body">
+                                <ul class="instruction-list">
+                                    <li>API密钥将被安全加密存储</li>
+                                    <li>建议定期测试连接以确保服务可用</li>
+                                    <li>同一服务类型只能配置一个API密钥</li>
+                                    <li>禁用的服务不会被用于AI分析</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h4><i class="fas fa-key"></i> 获取API密钥</h4>
+                            </div>
+                            <div class="card-body">
+                                <div class="api-links">
+                                    <div class="api-link-item">
+                                        <i class="fas fa-robot"></i>
+                                        <strong>DeepSeek:</strong>
+                                        <a href="https://platform.deepseek.com/" target="_blank" class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-external-link-alt"></i>
+                                            获取密钥
+                                        </a>
+                                    </div>
+                                    <div class="api-link-item">
+                                        <i class="fas fa-moon"></i>
+                                        <strong>Kimi:</strong>
+                                        <a href="https://platform.moonshot.cn/" target="_blank" class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-external-link-alt"></i>
+                                            获取密钥
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                    </main>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 动态更新服务描述
+        function updateServiceDescription() {
+            const serviceSelect = document.getElementById('service_name');
+            const descriptionDiv = document.getElementById('service-description');
+            
+            const descriptions = {
+                'deepseek': '🤖 DeepSeek是一个强大的AI模型，擅长代码分析和技术文档理解。',
+                'kimi': '🌙 Kimi是月之暗面开发的AI助手，具有超长上下文处理能力。'
+            };
+            
+            const selectedService = serviceSelect.value;
+            if (selectedService && descriptions[selectedService]) {
+                descriptionDiv.innerHTML = descriptions[selectedService];
+                descriptionDiv.style.display = 'block';
+            } else {
+                descriptionDiv.style.display = 'none';
+            }
+        }
+        
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            updateServiceDescription();
+            
+            // 监听服务选择变化
+            const serviceSelect = document.getElementById('service_name');
+            if (serviceSelect) {
+                serviceSelect.addEventListener('change', updateServiceDescription);
+            }
+            
+            // 为删除表单添加确认对话框
+            const deleteForms = document.querySelectorAll('.delete-form');
+            deleteForms.forEach(form => {
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const serviceName = form.querySelector('input[name="service_name"]').value;
+                    if (confirm(`确定要删除 ${serviceName} 的API配置吗？\n\n此操作不可撤销，删除后需要重新配置。`)) {
+                        form.submit();
+                    }
+                });
+            });
+        });
+        
+        // 表单提交时显示加载状态
+        function showLoading(form) {
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 处理中...';
+            }
+        }
+        
+        // 全局搜索功能
+        function performGlobalSearch() {
+            const query = document.getElementById('globalSearch').value.trim();
+            if (query) {
+                window.location.href = `/search/?q=${encodeURIComponent(query)}`;
+            }
+        }
+        
+        // 回车键搜索
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('globalSearch');
+            if (searchInput) {
+                searchInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        performGlobalSearch();
+                    }
+                });
+            }
+        });
+    </script>
+    
+    <style>
+        /* 额外样式 */
+        .config-meta .meta-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+        
+        .config-meta .meta-item i {
+            margin-right: 0.5rem;
+            width: 16px;
+            color: var(--primary-color);
+        }
+        
+        .instruction-list {
+            padding-left: 1.2rem;
+            margin-bottom: 0;
+        }
+        
+        .instruction-list li {
+            margin-bottom: 0.5rem;
+            line-height: 1.5;
+        }
+        
+        .api-links .api-link-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .api-links .api-link-item:last-child {
+            border-bottom: none;
+        }
+        
+        .api-links .api-link-item i {
+            margin-right: 0.5rem;
+            color: var(--primary-color);
+        }
+        
+        .empty-state {
+            padding: 2rem;
+        }
+        
+        .empty-state-icon {
+            font-size: 3rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+        
+        .empty-state h5 {
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .empty-state p {
+            color: var(--text-muted);
+            margin-bottom: 0;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .btn-group .btn {
+            flex: 1;
+            min-width: auto;
+        }
+        
+        @media (max-width: 768px) {
+            .btn-group {
+                flex-direction: column;
+            }
+            
+            .api-links .api-link-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+        }
+    </style>
+</body>
+</html>

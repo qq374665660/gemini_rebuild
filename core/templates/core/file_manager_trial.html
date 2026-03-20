@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web文件管理试用 - {{ project.name }}</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/components.css' %}?v=2.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .trial-shell {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 16px;
+        }
+        .panel {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 16px;
+        }
+        .panel h3 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+        .tree-list,
+        .tree-list ul {
+            list-style: none;
+            padding-left: 14px;
+            margin: 0;
+        }
+        .tree-item {
+            margin: 4px 0;
+        }
+        .tree-folder-btn {
+            border: none;
+            background: transparent;
+            color: #1f2937;
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tree-folder-btn.active {
+            background: #dbeafe;
+            color: #1d4ed8;
+            font-weight: 600;
+        }
+        .tree-folder-meta {
+            font-size: 12px;
+            color: #64748b;
+            font-weight: 400;
+        }
+        .tree-folder-meta.is-empty {
+            color: #94a3b8;
+        }
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .path-box {
+            font-family: monospace;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 12px;
+            word-break: break-all;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .table-wrap {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border-bottom: 1px solid #e2e8f0;
+            padding: 8px;
+            text-align: left;
+            font-size: 14px;
+        }
+        .op-links a,
+        .op-links button {
+            margin-right: 8px;
+            border: none;
+            background: none;
+            color: #2563eb;
+            cursor: pointer;
+            padding: 0;
+            font-size: 13px;
+        }
+        .message-box {
+            margin-bottom: 12px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            display: none;
+        }
+        .message-success {
+            background: #ecfdf5;
+            color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+        .message-error {
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        .path-tools {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: center;
+        }
+        .path-breadcrumb {
+            margin: 8px 0 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            font-size: 13px;
+        }
+        .path-breadcrumb button {
+            border: none;
+            background: #eef2ff;
+            color: #1e40af;
+            padding: 4px 8px;
+            border-radius: 999px;
+            cursor: pointer;
+        }
+        .path-breadcrumb .current {
+            background: #dbeafe;
+            color: #1d4ed8;
+            font-weight: 600;
+        }
+        .is-loading {
+            opacity: 0.65;
+            pointer-events: none;
+        }
+        @media (max-width: 980px) {
+            .trial-shell {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-layout">
+        {% include 'core/partials/navbar.html' %}
+        <main class="app-main">
+            <div class="app-content">
+                <div class="container">
+                    <div class="toolbar" style="margin-top: 12px;">
+                        <div>
+                            <div style="font-size:13px;color:#64748b;margin-bottom:6px;">
+                                <a href="{% url 'project_list' %}" style="color:#64748b;text-decoration:none;">课题列表</a>
+                                <span style="margin:0 6px;">/</span>
+                                <a href="{% url 'project_detail' project.project_id %}" style="color:#64748b;text-decoration:none;">课题详情</a>
+                                <span style="margin:0 6px;">/</span>
+                                <strong style="color:#334155;">Web试用</strong>
+                            </div>
+                            <h2 style="margin: 0;">Web文件管理试用</h2>
+                            <div style="color:#64748b; margin-top:4px;">项目：{{ project.name }}（{{ project.project_id }}）</div>
+                        </div>
+                        <div>
+                            <a href="{% url 'project_detail' project.project_id %}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i>
+                                返回详情页
+                            </a>
+                        </div>
+                    </div>
+
+                    <div id="messageBox" class="message-box"></div>
+
+                    <div class="trial-shell">
+                        <section class="panel">
+                            <h3><i class="fas fa-folder-tree"></i> 目录树</h3>
+                            <button id="refreshTreeBtn" class="btn btn-outline-primary btn-sm" type="button">
+                                <i class="fas fa-rotate"></i> 刷新
+                            </button>
+                            <div id="treeContainer" style="margin-top: 10px;"></div>
+                        </section>
+
+                        <section class="panel">
+                            <h3><i class="fas fa-folder-open"></i> 当前目录</h3>
+                            <div class="path-tools">
+                                <div class="path-box" id="currentPathText">/</div>
+                                <button id="upLevelBtn" type="button" class="btn btn-outline-secondary btn-sm">上一级</button>
+                            </div>
+                            <div id="pathBreadcrumb" class="path-breadcrumb"></div>
+
+                            <form id="uploadForm" class="form-row">
+                                <input id="uploadFiles" type="file" name="files" multiple required>
+                                <button type="submit" class="btn btn-primary btn-sm">上传</button>
+                            </form>
+
+                            <form id="mkdirForm" class="form-row">
+                                <input id="newFolderName" type="text" placeholder="新文件夹名称" required>
+                                <button type="submit" class="btn btn-outline-primary btn-sm">新建文件夹</button>
+                            </form>
+
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>名称</th>
+                                            <th>类型</th>
+                                            <th>大小</th>
+                                            <th>修改时间</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="itemsBody"></tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const endpoints = {
+            tree: "{% url 'get_file_tree' project.project_id %}",
+            upload: "{% url 'file_action' project.project_id 'upload' %}",
+            mkdir: "{% url 'file_action' project.project_id 'create_folder' %}",
+            del: "{% url 'file_action' project.project_id 'delete' %}",
+            rename: "{% url 'file_action' project.project_id 'rename' %}",
+            previewBase: "{% url 'file_action' project.project_id 'preview' %}",
+            downloadBase: "{% url 'file_action' project.project_id 'download' %}"
+        };
+
+        let treeData = [];
+        let currentPath = "";
+        let isLoading = false;
+
+        const treeContainer = document.getElementById("treeContainer");
+        const itemsBody = document.getElementById("itemsBody");
+        const currentPathText = document.getElementById("currentPathText");
+        const messageBox = document.getElementById("messageBox");
+        const uploadForm = document.getElementById("uploadForm");
+        const uploadFiles = document.getElementById("uploadFiles");
+        const mkdirForm = document.getElementById("mkdirForm");
+        const newFolderName = document.getElementById("newFolderName");
+        const upLevelBtn = document.getElementById("upLevelBtn");
+        const pathBreadcrumb = document.getElementById("pathBreadcrumb");
+
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) {
+                return parts.pop().split(";").shift();
+            }
+            return "";
+        }
+
+        function showMessage(msg, isError = false) {
+            messageBox.style.display = "block";
+            messageBox.className = "message-box " + (isError ? "message-error" : "message-success");
+            messageBox.textContent = msg;
+            setTimeout(() => {
+                messageBox.style.display = "none";
+            }, 2600);
+        }
+
+        function setLoading(loading) {
+            isLoading = loading;
+            document.body.classList.toggle("is-loading", loading);
+        }
+
+        function normalizePath(path) {
+            return (path || "").replace(/\\/g, "/");
+        }
+
+        function renderBreadcrumb() {
+            const segs = normalizePath(currentPath).split("/").filter(Boolean);
+            const parts = [{ name: "根目录", path: "" }];
+            let acc = "";
+            for (const seg of segs) {
+                acc = acc ? `${acc}/${seg}` : seg;
+                parts.push({ name: seg, path: acc });
+            }
+            pathBreadcrumb.innerHTML = parts.map((p, idx) => {
+                const cls = idx === parts.length - 1 ? "current" : "";
+                return `<button type="button" class="${cls}" onclick="jumpToPath('${(p.path || "").replace(/'/g, "\\'")}')">${p.name}</button>`;
+            }).join("");
+            upLevelBtn.disabled = segs.length === 0;
+        }
+
+        function findFolderNode(nodes, targetPath) {
+            const target = normalizePath(targetPath);
+            for (const node of nodes) {
+                if (node.type === "folder") {
+                    if (normalizePath(node.path) === target) {
+                        return node;
+                    }
+                    if (node.children && node.children.length) {
+                        const found = findFolderNode(node.children, target);
+                        if (found) return found;
+                    }
+                }
+            }
+            return null;
+        }
+
+        function renderTree(nodes) {
+            const ul = document.createElement("ul");
+            ul.className = "tree-list";
+
+            for (const node of nodes) {
+                const li = document.createElement("li");
+                li.className = "tree-item";
+
+                if (node.type === "folder") {
+                    const btn = document.createElement("button");
+                    btn.className = "tree-folder-btn" + (normalizePath(currentPath) === normalizePath(node.path) ? " active" : "");
+                    btn.type = "button";
+
+                    const folderName = document.createElement("span");
+                    folderName.className = "tree-folder-name";
+                    folderName.textContent = `📁 ${node.name}`;
+                    btn.appendChild(folderName);
+
+                    const fileCount = Number.isFinite(Number(node.file_count)) ? Number(node.file_count) : null;
+                    const folderCount = Number.isFinite(Number(node.folder_count)) ? Number(node.folder_count) : null;
+                    const fallbackTotal = Array.isArray(node.children) ? node.children.length : null;
+
+                    const meta = document.createElement("span");
+                    meta.className = "tree-folder-meta";
+                    if (fileCount !== null && folderCount !== null) {
+                        const totalItems = fileCount + folderCount;
+                        if (totalItems === 0) {
+                            meta.textContent = "（空）";
+                            meta.classList.add("is-empty");
+                        } else {
+                            meta.textContent = `（${fileCount} 文件，${folderCount} 文件夹）`;
+                        }
+                    } else if (fallbackTotal !== null) {
+                        if (fallbackTotal === 0) {
+                            meta.textContent = "（空）";
+                            meta.classList.add("is-empty");
+                        } else {
+                            meta.textContent = `（${fallbackTotal} 项）`;
+                        }
+                    }
+                    if (meta.textContent) {
+                        btn.appendChild(meta);
+                    }
+
+                    btn.onclick = () => {
+                        currentPath = node.path || "";
+                        refreshPanel();
+                    };
+                    li.appendChild(btn);
+                    if (node.children && node.children.length) {
+                        li.appendChild(renderTree(node.children));
+                    }
+                }
+                ul.appendChild(li);
+            }
+            return ul;
+        }
+
+        function buildPreviewLink(path) {
+            return `${endpoints.previewBase}?path=${encodeURIComponent(path)}`;
+        }
+
+        function buildDownloadLink(path) {
+            return `${endpoints.downloadBase}?path=${encodeURIComponent(path)}`;
+        }
+
+        async function deleteItem(path, name) {
+            if (!confirm(`确定删除：${name} ？`)) return;
+            const body = new URLSearchParams();
+            body.append("path", path);
+            try {
+                const resp = await fetch(endpoints.del, {
+                    method: "POST",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                        "X-CSRFToken": getCookie("csrftoken"),
+                        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+                    },
+                    body: body.toString()
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) {
+                    showMessage(data.message || "删除失败", true);
+                    return;
+                }
+                showMessage(data.message || "删除完成");
+                await loadTree();
+            } catch (err) {
+                showMessage(`删除失败: ${err}`, true);
+            }
+        }
+
+        async function renameItem(path, oldName) {
+            const newName = prompt("请输入新名称：", oldName || "");
+            if (!newName || newName.trim() === "" || newName.trim() === oldName) return;
+            const body = new URLSearchParams();
+            body.append("path", path);
+            body.append("new_name", newName.trim());
+            try {
+                const resp = await fetch(endpoints.rename, {
+                    method: "POST",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                        "X-CSRFToken": getCookie("csrftoken"),
+                        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+                    },
+                    body: body.toString()
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) {
+                    showMessage(data.message || "重命名失败", true);
+                    return;
+                }
+                showMessage(data.message || "重命名成功");
+                await loadTree();
+            } catch (err) {
+                showMessage(`重命名失败: ${err}`, true);
+            }
+        }
+
+        function renderItems(folderNode) {
+            const rows = [];
+            const children = folderNode ? (folderNode.children || []) : treeData;
+            children.forEach((item) => {
+                const typeText = item.type === "folder" ? "文件夹" : "文件";
+                const sizeText = item.type === "file" ? (item.size || "-") : "-";
+                const timeText = item.type === "file" ? (item.modified_time || "-") : "-";
+                const safeName = item.name || "(未命名)";
+
+                let ops = "";
+                if (item.type === "folder") {
+                    ops += `<button type="button" onclick="enterFolder('${(item.path || '').replace(/'/g, "\\'")}')">进入</button>`;
+                } else {
+                    ops += `<a href="${buildPreviewLink(item.path)}" target="_blank">预览</a>`;
+                    ops += `<a href="${buildDownloadLink(item.path)}">下载</a>`;
+                }
+                ops += `<button type="button" onclick="renameByPath('${(item.path || '').replace(/'/g, "\\'")}', '${safeName.replace(/'/g, "\\'")}')">重命名</button>`;
+                ops += `<button type="button" onclick="deleteByPath('${(item.path || '').replace(/'/g, "\\'")}', '${safeName.replace(/'/g, "\\'")}')">删除</button>`;
+
+                rows.push(`
+                    <tr>
+                        <td>${safeName}</td>
+                        <td>${typeText}</td>
+                        <td>${sizeText}</td>
+                        <td>${timeText}</td>
+                        <td class="op-links">${ops}</td>
+                    </tr>
+                `);
+            });
+
+            itemsBody.innerHTML = rows.length ? rows.join("") : `<tr><td colspan="5" style="text-align:center;color:#64748b;">当前目录暂无文件</td></tr>`;
+        }
+
+        function refreshPanel() {
+            const shownPath = currentPath ? `/${currentPath}` : "/";
+            currentPathText.textContent = shownPath;
+            renderBreadcrumb();
+
+            treeContainer.innerHTML = "";
+            const rootBar = document.createElement("div");
+            rootBar.style.marginBottom = "8px";
+            rootBar.innerHTML = `<button type="button" class="tree-folder-btn ${currentPath === "" ? "active" : ""}" onclick="goRoot()">📁 根目录</button>`;
+            treeContainer.appendChild(rootBar);
+            treeContainer.appendChild(renderTree(treeData));
+
+            const folderNode = currentPath ? findFolderNode(treeData, currentPath) : { children: treeData };
+            renderItems(folderNode);
+        }
+
+        async function loadTree() {
+            setLoading(true);
+            try {
+                const resp = await fetch(endpoints.tree, { method: "GET" });
+                const data = await resp.json();
+                if (!data.success) {
+                    showMessage("加载文件树失败", true);
+                    return;
+                }
+                treeData = data.file_tree || [];
+                if (currentPath && !findFolderNode(treeData, currentPath)) {
+                    currentPath = "";
+                }
+                refreshPanel();
+            } catch (e) {
+                showMessage(`加载失败: ${e}`, true);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        uploadForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            if (!uploadFiles.files.length) {
+                showMessage("请选择文件", true);
+                return;
+            }
+            const formData = new FormData();
+            for (const f of uploadFiles.files) {
+                formData.append("files", f);
+            }
+            formData.append("target_path", currentPath);
+
+            try {
+                setLoading(true);
+                const resp = await fetch(endpoints.upload, {
+                    method: "POST",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                        "X-CSRFToken": getCookie("csrftoken")
+                    },
+                    body: formData
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    showMessage(data.message || "上传失败", true);
+                    return;
+                }
+                uploadFiles.value = "";
+                showMessage(data.message || "上传成功");
+                await loadTree();
+            } catch (err) {
+                showMessage(`上传失败: ${err}`, true);
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        mkdirForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const name = (newFolderName.value || "").trim();
+            if (!name) {
+                showMessage("请输入文件夹名称", true);
+                return;
+            }
+
+            const body = new URLSearchParams();
+            body.append("folder_name", name);
+            body.append("parent_path", currentPath);
+
+            try {
+                setLoading(true);
+                const resp = await fetch(endpoints.mkdir, {
+                    method: "POST",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                        "X-CSRFToken": getCookie("csrftoken"),
+                        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+                    },
+                    body: body.toString()
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    showMessage(data.message || "创建失败", true);
+                    return;
+                }
+                newFolderName.value = "";
+                showMessage(data.message || "创建成功");
+                await loadTree();
+            } catch (err) {
+                showMessage(`创建失败: ${err}`, true);
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        document.getElementById("refreshTreeBtn").addEventListener("click", loadTree);
+
+        function goRoot() {
+            currentPath = "";
+            refreshPanel();
+        }
+
+        function enterFolder(path) {
+            currentPath = path || "";
+            refreshPanel();
+        }
+
+        function goUp() {
+            const segs = normalizePath(currentPath).split("/").filter(Boolean);
+            segs.pop();
+            currentPath = segs.join("/");
+            refreshPanel();
+        }
+
+        function jumpToPath(path) {
+            currentPath = path || "";
+            refreshPanel();
+        }
+
+        function deleteByPath(path, name) {
+            deleteItem(path, name);
+        }
+
+        function renameByPath(path, name) {
+            renameItem(path, name);
+        }
+
+        window.goRoot = goRoot;
+        window.enterFolder = enterFolder;
+        window.deleteByPath = deleteByPath;
+        window.renameByPath = renameByPath;
+        window.jumpToPath = jumpToPath;
+        upLevelBtn.addEventListener("click", goUp);
+
+        loadTree();
+    </script>
+</body>
+</html>

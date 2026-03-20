@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>删除课题 - {{ project.name }} - 科研课题管理系统</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- 顶部导航栏 -->
+        {% include 'core/partials/navbar.html' %}
+        
+        <!-- 主要内容区域 -->
+        <main class="app-main">
+            <div class="app-content">
+                <!-- 页面头部 -->
+                <div class="page-header">
+                    <div class="container">
+                        <div class="page-header-content">
+                            <div>
+                                <nav class="breadcrumb">
+                                    <a href="{% url 'project_list' %}" class="breadcrumb-item">
+                                        <i class="fas fa-home"></i>
+                                        课题列表
+                                    </a>
+                                    <span class="breadcrumb-separator">/</span>
+                                    <a href="{% url 'project_detail' project.project_id %}" class="breadcrumb-item">
+                                        {{ project.name }}
+                                    </a>
+                                    <span class="breadcrumb-separator">/</span>
+                                    <span class="breadcrumb-item active">删除课题</span>
+                                </nav>
+                                <h1 class="page-title">
+                                    <i class="fas fa-trash-alt"></i>
+                                    删除课题
+                                </h1>
+                                <p class="page-subtitle">请确认删除操作，此操作不可恢复</p>
+                            </div>
+                            <div class="page-actions">
+                                <a href="{% url 'project_detail' project.project_id %}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i>
+                                    返回详情
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 页面内容 -->
+                <div class="page-body">
+                    <div class="container">
+                        <div class="row justify-content-center">
+                            <div class="col-lg-8">
+                                <!-- 删除确认卡片 -->
+                                <div class="content-section">
+                                    <div class="content-section-body">
+                                        <div class="delete-confirmation">
+                                            <div class="delete-confirmation-icon">
+                                                <i class="fas fa-exclamation-triangle"></i>
+                                            </div>
+                                            <h3 class="delete-confirmation-title">确认删除课题</h3>
+                                            <div class="delete-confirmation-content">
+                                                <div class="project-info-card">
+                                                    <div class="project-info-header">
+                                                        <h4>{{ project.name }}</h4>
+                                                        <span class="badge badge-secondary">{{ project.project_id }}</span>
+                                                    </div>
+                                                    <div class="project-info-details">
+                                                        <div class="project-info-item">
+                                                            <i class="fas fa-user"></i>
+                                                            <span>负责人：{{ project.project_lead|default:"未设置" }}</span>
+                                                        </div>
+                                                        <div class="project-info-item">
+                                                            <i class="fas fa-calendar"></i>
+                                                            <span>开始年份：{{ project.start_year }}</span>
+                                                        </div>
+                                                        <div class="project-info-item">
+                                                            <i class="fas fa-tag"></i>
+                                                            <span>状态：{{ project.status }}</span>
+                                                        </div>
+                                                        {% if project.directory_path %}
+                                                        <div class="project-info-item">
+                                                            <i class="fas fa-folder"></i>
+                                                            <span>文件路径：{{ project.directory_path }}</span>
+                                                        </div>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="alert alert-danger">
+                                                    <div class="alert-icon">
+                                                        <i class="fas fa-exclamation-triangle"></i>
+                                                    </div>
+                                                    <div class="alert-content">
+                                                        <h5>警告：此操作不可恢复</h5>
+                                                        <p>删除课题将会：</p>
+                                                        <ul>
+                                                            <li>永久删除课题的所有基本信息</li>
+                                                            <li>删除课题相关的所有分析结果</li>
+                                                            <li>删除课题目录下的所有文件和文件夹</li>
+                                                            <li>清除课题的所有历史记录</li>
+                                                        </ul>
+                                                        <p><strong>请确保您已经备份了重要文件，或者确认不再需要这些数据。</strong></p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="delete-confirmation-actions">
+                                                <form method="post" style="display: inline;">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-danger btn-lg" onclick="return confirmDelete()">
+                                                        <i class="fas fa-trash-alt"></i>
+                                                        确认删除课题
+                                                    </button>
+                                                </form>
+                                                <a href="{% url 'project_detail' project.project_id %}" class="btn btn-secondary btn-lg">
+                                                    <i class="fas fa-times"></i>
+                                                    取消操作
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        function confirmDelete() {
+            return confirm('您确定要删除课题"{{ project.name|escapejs }}"吗？\n\n此操作将永久删除：\n- 课题的所有基本信息\n- 相关的分析结果\n- 课题目录下的所有文件\n\n此操作不可恢复，请谨慎操作！');
+        }
+        
+        // 全局搜索功能
+        document.getElementById('global-search').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const searchValue = this.value.trim();
+                if (searchValue) {
+                    window.location.href = `{% url 'project_list' %}?q=${encodeURIComponent(searchValue)}`;
+                }
+            }
+        });
+    </script>
+    
+    <style>
+        .delete-confirmation {
+            text-align: center;
+            padding: var(--spacing-2xl);
+        }
+        
+        .delete-confirmation-icon {
+            font-size: 4rem;
+            color: var(--error-color);
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .delete-confirmation-title {
+            font-size: var(--font-size-2xl);
+            font-weight: var(--font-weight-bold);
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-xl);
+        }
+        
+        .delete-confirmation-content {
+            margin-bottom: var(--spacing-xl);
+        }
+        
+        .project-info-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-card);
+            padding: var(--spacing-lg);
+            margin-bottom: var(--spacing-lg);
+            text-align: left;
+        }
+        
+        .project-info-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--spacing-md);
+            padding-bottom: var(--spacing-md);
+            border-bottom: 1px solid var(--border-light);
+        }
+        
+        .project-info-header h4 {
+            margin: 0;
+            font-size: var(--font-size-lg);
+            font-weight: var(--font-weight-semibold);
+            color: var(--text-primary);
+        }
+        
+        .project-info-details {
+            display: grid;
+            gap: var(--spacing-sm);
+        }
+        
+        .project-info-item {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            color: var(--text-secondary);
+            font-size: var(--font-size-sm);
+        }
+        
+        .project-info-item i {
+            width: 16px;
+            color: var(--primary-color);
+        }
+        
+        .delete-confirmation-actions {
+            display: flex;
+            gap: var(--spacing-md);
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .justify-content-center {
+            justify-content: center;
+        }
+        
+        @media (max-width: 768px) {
+            .delete-confirmation {
+                padding: var(--spacing-lg);
+            }
+            
+            .delete-confirmation-actions {
+                flex-direction: column;
+            }
+            
+            .btn-lg {
+                width: 100%;
+            }
+        }
+    </style>
+</body>
+</html>

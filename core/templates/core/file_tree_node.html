@@ -1,0 +1,43 @@
+{% comment %} Recursive template for rendering a file tree node {% endcomment %}
+<li>
+    <div class="tree-node">
+        {% if node.type == 'folder' %}
+            <span class="toggler">
+                {% if node.children %}+{% else %}{% endif %}
+            </span>
+            <span class="folder-icon">📁</span>
+            <span class="folder-name"><strong>{{ node.name }}</strong></span>
+            <span class="folder-stats">
+                {% if node.file_count > 0 or node.folder_count > 0 %}
+                    ({{ node.file_count }} files, {{ node.folder_count }} folders)
+                {% endif %}
+            </span>
+            <div class="actions">
+                <a href="#" onclick="setUploadTarget('{{ node.path }}', '{{ node.name }}'); return false;" title="上传文件到此文件夹">📤</a>
+                <a href="#" onclick="setUploadTarget('{{ node.path }}', '{{ node.name }}'); return false;" title="在此文件夹中创建子文件夹">📁+</a>
+                {% if not node.name|slice:":2" == "01" and not node.name|slice:":2" == "02" and not node.name|slice:":2" == "03" and not node.name|slice:":2" == "04" and not node.name|slice:":2" == "05" and not node.name|slice:":2" == "06" %}
+                    <a href="{% url 'file_action' project.project_id 'delete' %}?path={{ node.path }}" class="delete" onclick="return confirm('确定要删除整个文件夹及其所有内容吗？');" title="删除文件夹">🗑️</a>
+                {% endif %}
+            </div>
+        {% else %}
+            <span class="file-spacer"></span>
+            <span class="file-icon">📄</span>
+            <span class="file-name">{{ node.name }}</span>
+            <span class="file-size">
+                ({{ node.size|default:"未知大小" }}{% if node.modified_time %}, {{ node.modified_time }}{% endif %})
+            </span>
+            <div class="actions">
+                <a href="{% url 'file_action' project.project_id 'preview' %}?path={{ node.path }}" target="_blank" title="预览文件">👁️</a>
+                <a href="{% url 'file_action' project.project_id 'download' %}?path={{ node.path }}" title="下载文件">⬇️</a>
+                <a href="{% url 'file_action' project.project_id 'delete' %}?path={{ node.path }}" class="delete" onclick="return confirm('确定要删除这个文件吗？');" title="删除文件">🗑️</a>
+            </div>
+        {% endif %}
+    </div>
+    {% if node.children %}
+        <ul class="nested">
+            {% for child_node in node.children %}
+                {% include "core/file_tree_node.html" with node=child_node project=project %}
+            {% endfor %}
+        </ul>
+    {% endif %}
+</li>

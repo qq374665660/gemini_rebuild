@@ -1,0 +1,3136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project.name }} - 课题详情 - 科研课题管理系统</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/components.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/project-detail-modern.css' %}?v=2.1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;700&family=Noto+Sans+SC:wght@400;500;600&family=Noto+Serif+SC:wght@600;700&display=swap">
+    <style>
+        .metrics-category {
+            border: 1px solid var(--stroke);
+            border-radius: 14px;
+            padding: 20px;
+            background: var(--surface);
+            box-shadow: var(--shadow-card);
+        }
+        .category-title {
+            color: var(--ink);
+            font-weight: 600;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--accent);
+        }
+        .category-title i {
+            color: var(--accent);
+            margin-right: 8px;
+        }
+        .table th {
+            background-color: var(--accent-strong) !important;
+            color: var(--text-inverse);
+            font-weight: 500;
+            border: none;
+        }
+        .table td {
+            vertical-align: middle;
+            border-color: var(--stroke);
+        }
+        .table-hover tbody tr:hover {
+            background-color: var(--accent-soft);
+        }
+        .badge {
+            font-size: 0.75em;
+            padding: 0.5em 0.75em;
+        }
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        body.page-theme {
+            --ink: #0f172a;
+            --muted: #64748b;
+            --accent: #2563eb;
+            --accent-strong: #1d4ed8;
+            --accent-warm: #0ea5e9;
+            --accent-soft: #dbeafe;
+            --surface: #ffffff;
+            --surface-strong: #f8fafc;
+            --stroke: #e2e8f0;
+            --shadow-card: 0 14px 30px rgba(15, 23, 42, 0.12);
+            --shadow-soft: 0 20px 45px rgba(15, 23, 42, 0.16);
+            --font-sans: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+            --font-serif: "Source Serif 4", "Noto Serif SC", serif;
+        }
+
+        body.theme-detail {
+            font-family: var(--font-sans);
+            font-size: 16px;
+            color: var(--ink);
+            background: var(--bg-secondary);
+        }
+
+        body.theme-detail .page-header {
+            position: relative;
+            overflow: hidden;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--stroke);
+        }
+
+        body.theme-detail .page-header::after {
+            content: "";
+            position: absolute;
+            right: -90px;
+            top: -80px;
+            width: 260px;
+            height: 260px;
+            background: none;
+            opacity: 0.85;
+            pointer-events: none;
+        }
+
+        body.theme-detail .page-title {
+            font-family: var(--font-serif);
+            letter-spacing: 0.5px;
+            color: var(--ink);
+        }
+
+        body.theme-detail .page-subtitle {
+            color: var(--muted);
+        }
+
+        body.theme-detail #info .content-section {
+            background: var(--surface);
+            border: 1px solid var(--stroke);
+            border-radius: 20px;
+            box-shadow: var(--shadow-card);
+        }
+
+        body.theme-detail #info .content-section-header {
+            border-bottom: 1px solid var(--stroke);
+            background: var(--bg-secondary);
+        }
+
+        body.theme-detail #info .content-section-title {
+            font-family: var(--font-serif);
+            letter-spacing: 0.3px;
+        }
+
+        body.theme-detail #info .project-info-grid {
+            gap: 22px;
+            grid-template-columns: 1fr;
+        }
+
+        body.theme-detail #info .info-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--stroke);
+            border-radius: 18px;
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+        }
+
+        body.theme-detail #info .info-card-header {
+            border-bottom: 1px solid var(--stroke);
+            background: var(--bg-secondary);
+            border-radius: 18px 18px 0 0;
+        }
+
+        body.theme-detail #info .info-card-header h4 {
+            font-family: var(--font-serif);
+            color: var(--ink);
+        }
+
+        body.theme-detail #info .info-item label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            letter-spacing: 0.4px;
+        }
+
+        body.theme-detail #info .info-item span {
+            font-weight: 600;
+            color: var(--ink);
+        }
+
+        body.theme-detail #info .badge {
+            border-radius: 999px;
+            border: 1px solid var(--stroke);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+
+        body.theme-detail #info .badge-success {
+            background: var(--success-light);
+            color: var(--success-color);
+            border-color: rgba(22, 163, 74, 0.3);
+        }
+
+        body.theme-detail #info .badge-warning {
+            background: var(--warning-light);
+            color: var(--warning-color);
+            border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        body.theme-detail #info .badge-primary {
+            background: var(--primary-light);
+            color: var(--primary-color);
+            border-color: rgba(37, 99, 235, 0.28);
+        }
+
+        body.theme-detail #info .badge-info,
+        body.theme-detail #info .badge-secondary {
+            background: var(--primary-lighter);
+            color: var(--primary-color);
+            border-color: rgba(37, 99, 235, 0.2);
+        }
+
+        body.theme-detail #info .budget-stats-grid {
+            gap: 18px;
+        }
+
+        body.theme-detail #info .stats-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--stroke);
+            border-radius: 18px;
+            box-shadow: 0 14px 24px rgba(15, 23, 42, 0.1);
+        }
+
+        body.theme-detail #info .stats-card-icon {
+            background: rgba(37, 99, 235, 0.15);
+            color: var(--primary-color);
+            border-radius: 12px;
+            width: 46px;
+            height: 46px;
+            display: grid;
+            place-items: center;
+        }
+
+        body.theme-detail #info .stats-card-warning .stats-card-icon {
+            background: rgba(245, 158, 11, 0.18);
+            color: var(--warning-color);
+        }
+
+        body.theme-detail #info .stats-card-success .stats-card-icon {
+            background: rgba(22, 163, 74, 0.18);
+            color: var(--success-color);
+        }
+
+        body.theme-detail #info .stats-card-content h3 {
+            font-family: var(--font-serif);
+            color: var(--ink);
+        }
+
+        body.theme-detail #info .description-card {
+            border: 1px solid var(--stroke);
+            border-radius: 18px;
+            background: var(--bg-primary);
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+        }
+
+        body.theme-detail #info .description-item h5 {
+            font-family: var(--font-serif);
+            color: var(--ink);
+        }
+
+        body.theme-detail #info .info-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 340px;
+            gap: 24px;
+        }
+
+        body.theme-detail #info .info-aside {
+            display: grid;
+            gap: 20px;
+            position: sticky;
+            top: 90px;
+            align-self: start;
+        }
+
+        body.theme-detail #info .overview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+
+        body.theme-detail #info .overview-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--stroke);
+            border-radius: 16px;
+            padding: 14px 16px;
+            display: grid;
+            gap: 6px;
+            box-shadow: 0 12px 22px rgba(15, 23, 42, 0.08);
+        }
+
+        body.theme-detail #info .overview-card .label {
+            font-size: 13px;
+            color: var(--muted);
+            letter-spacing: 0.4px;
+        }
+
+        body.theme-detail #info .overview-card .value {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--ink);
+        }
+
+        body.theme-detail #info .info-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+        }
+
+        body.theme-detail #info .summary-block {
+            background: var(--bg-primary);
+            border: 1px solid var(--stroke);
+            border-radius: 18px;
+            padding: 16px;
+            display: grid;
+            gap: 12px;
+        }
+
+        body.theme-detail #info .summary-block h4 {
+            font-family: var(--font-serif);
+            font-size: 16px;
+            color: var(--ink);
+            margin: 0;
+        }
+
+        body.theme-detail #info .summary-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        body.theme-detail #info .summary-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        body.theme-detail #info .summary-item .label {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        body.theme-detail #info .summary-item .value {
+            font-weight: 600;
+            color: var(--ink);
+            text-align: right;
+        }
+
+        body.theme-detail #info .description-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+            gap: 18px;
+        }
+
+        body.theme-detail #info .description-stack {
+            display: grid;
+            gap: 16px;
+        }
+
+        body.theme-detail #info .edit-form {
+            display: grid;
+            gap: 18px;
+        }
+
+        body.theme-detail #info .edit-section {
+            background: var(--surface-strong);
+            border: 1px solid var(--stroke);
+            border-radius: 16px;
+            padding: 16px;
+            display: grid;
+            gap: 12px;
+        }
+
+        body.theme-detail #info .edit-section h4 {
+            font-family: var(--font-serif);
+            font-size: 16px;
+            margin: 0;
+        }
+
+        body.theme-detail #info .edit-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        body.theme-detail #info .edit-grid .form-group-full {
+            grid-column: 1 / -1;
+        }
+
+        body.theme-detail #info .edit-form label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        body.theme-detail #info .edit-form input,
+        body.theme-detail #info .edit-form select,
+        body.theme-detail #info .edit-form textarea {
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            background: var(--bg-primary);
+            color: var(--ink);
+            box-shadow: inset 0 1px 2px rgba(12, 32, 36, 0.06);
+        }
+
+        body.theme-detail #info .edit-form input:focus,
+        body.theme-detail #info .edit-form select:focus,
+        body.theme-detail #info .edit-form textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+        }
+
+        body.theme-detail #info .edit-form .form-error {
+            color: var(--error-color);
+            font-size: 12px;
+        }
+
+        body.theme-detail #info .edit-form .form-help {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        body.theme-detail #info .info-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 360px;
+            gap: 28px;
+        }
+
+        body.theme-detail #info .info-main {
+            display: grid;
+            gap: 22px;
+        }
+
+        body.theme-detail #info .info-hero-card {
+            display: grid;
+            grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+            gap: 24px;
+            padding: 24px;
+            border-radius: 24px;
+            border: 1px solid var(--stroke);
+            background: var(--bg-primary);
+            box-shadow: var(--shadow-card);
+        }
+
+        body.theme-detail #info .info-hero-code {
+            font-size: 12px;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        body.theme-detail #info .info-hero-title {
+            font-family: var(--font-serif);
+            font-size: 28px;
+            margin: 8px 0 12px;
+            color: var(--ink);
+        }
+
+        body.theme-detail #info .info-hero-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        body.theme-detail #info .pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(37, 99, 235, 0.2);
+            background: var(--primary-lighter);
+            color: var(--primary-color);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        body.theme-detail #info .pill-status {
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            border-color: var(--stroke);
+        }
+
+        body.theme-detail #info .info-hero-meta {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px 18px;
+        }
+
+        body.theme-detail #info .meta-item {
+            display: grid;
+            gap: 6px;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: var(--surface-strong);
+            border: 1px solid var(--stroke);
+            font-size: 13px;
+        }
+
+        body.theme-detail #info .meta-item span {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        body.theme-detail #info .meta-item strong {
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        body.theme-detail #info .info-card {
+            border-radius: 20px;
+            border: 1px solid var(--stroke);
+            background: var(--bg-primary);
+            box-shadow: var(--shadow-card);
+            padding: 20px;
+        }
+
+        body.theme-detail #info .info-card-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: var(--font-serif);
+            font-size: 16px;
+            color: var(--ink);
+            margin-bottom: 14px;
+        }
+
+        body.theme-detail #info .kv-grid {
+            display: grid;
+            gap: 10px;
+        }
+
+        body.theme-detail #info .kv {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed var(--stroke);
+            font-size: 15px;
+        }
+
+        body.theme-detail #info .kv span {
+            color: var(--muted);
+        }
+
+        body.theme-detail #info .kv strong {
+            color: var(--ink);
+            font-weight: 600;
+            text-align: right;
+        }
+
+        body.theme-detail #info .kv:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        body.theme-detail #info .desc-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+            gap: 18px;
+        }
+
+        body.theme-detail #info .desc-block {
+            background: var(--surface-strong);
+            border: 1px solid var(--stroke);
+            border-radius: 16px;
+            padding: 16px;
+        }
+
+        body.theme-detail #info .desc-block h4 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            color: var(--ink);
+        }
+
+        body.theme-detail #info .desc-block p {
+            margin: 0;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        body.theme-detail #info .budget-grid {
+            display: grid;
+            gap: 12px;
+        }
+
+        body.theme-detail #info .budget-pill {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            border-radius: 14px;
+            background: var(--surface-strong);
+            border: 1px solid var(--stroke);
+            font-size: 13px;
+        }
+
+        body.theme-detail #info .budget-pill strong {
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        body.theme-detail #info .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 10px;
+        }
+
+        body.theme-detail #info .info-shell {
+            background: var(--bg-primary);
+            border: 1px solid var(--stroke);
+            border-radius: 22px;
+            padding: 24px;
+            box-shadow: var(--shadow-card);
+        }
+
+        body.theme-detail #info .info-header {
+            display: grid;
+            grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+            gap: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--stroke);
+        }
+
+        body.theme-detail #info .info-title-group {
+            display: grid;
+            gap: 8px;
+        }
+
+        body.theme-detail #info .info-code {
+            font-size: 12px;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        body.theme-detail #info .info-title {
+            font-family: var(--font-serif);
+            font-size: 26px;
+            margin: 0;
+            color: var(--ink);
+        }
+
+        body.theme-detail #info .info-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        body.theme-detail #info .info-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--primary-lighter);
+            border: 1px solid rgba(37, 99, 235, 0.2);
+            color: var(--primary-color);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        body.theme-detail #info .info-tag.status {
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            border-color: var(--stroke);
+        }
+
+        body.theme-detail #info .info-meta {
+            display: grid;
+            gap: 10px;
+        }
+
+        body.theme-detail #info .meta-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed var(--stroke);
+            font-size: 13px;
+        }
+
+        body.theme-detail #info .meta-row span {
+            color: var(--muted);
+        }
+
+        body.theme-detail #info .meta-row strong {
+            color: var(--ink);
+            font-weight: 600;
+            text-align: right;
+        }
+
+        body.theme-detail #info .meta-row:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        body.theme-detail #info .info-content-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+            gap: 24px;
+            padding-top: 20px;
+        }
+
+        body.theme-detail #info .info-view h3,
+        body.theme-detail #info .info-edit h3 {
+            margin: 0 0 12px 0;
+            font-family: var(--font-serif);
+            font-size: 16px;
+            color: var(--ink);
+        }
+
+        body.theme-detail #info .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px 18px;
+        }
+
+        body.theme-detail #info .info-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            padding-bottom: 6px;
+            border-bottom: 1px dashed var(--stroke);
+            font-size: 14px;
+        }
+
+        body.theme-detail #info .info-item span {
+            color: var(--muted);
+        }
+
+        body.theme-detail #info .info-item strong {
+            color: var(--ink);
+            font-weight: 600;
+            text-align: right;
+        }
+
+        body.theme-detail #info .info-section {
+            margin-top: 16px;
+            display: grid;
+            gap: 10px;
+        }
+
+        body.theme-detail #info .info-section h4 {
+            margin: 0;
+            font-size: 14px;
+            color: var(--ink);
+        }
+
+        body.theme-detail #info .info-section p {
+            margin: 0;
+            padding: 12px 14px;
+            background: var(--surface-strong);
+            border: 1px solid var(--stroke);
+            border-radius: 12px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        body.theme-detail #info .info-edit {
+            border-left: 1px solid var(--stroke);
+            padding-left: 24px;
+        }
+
+        body.theme-detail #info .edit-form {
+            background: transparent;
+            border: none;
+            padding: 0;
+        }
+
+        body.theme-detail #info .edit-section {
+            background: var(--surface-strong);
+            border: 1px solid var(--stroke);
+            border-radius: 14px;
+            padding: 14px;
+        }
+
+        @keyframes floatIn {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        body.theme-detail #info .content-section,
+        body.theme-detail #info .info-card,
+        body.theme-detail #info .stats-card {
+            animation: floatIn 0.6s ease both;
+        }
+
+        body.theme-detail #info .info-card:nth-of-type(2) {
+            animation-delay: 0.08s;
+        }
+
+        body.theme-detail #info .info-card:nth-of-type(3) {
+            animation-delay: 0.14s;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            body.theme-detail #info .content-section,
+            body.theme-detail #info .info-card,
+            body.theme-detail #info .stats-card {
+                animation: none;
+            }
+        }
+
+        @media (max-width: 992px) {
+            body.theme-detail #info .content-section,
+            body.theme-detail #info .info-card,
+            body.theme-detail #info .stats-card {
+                border-radius: 16px;
+            }
+            body.theme-detail #info .info-layout {
+                grid-template-columns: 1fr;
+            }
+            body.theme-detail #info .info-hero-card {
+                grid-template-columns: 1fr;
+            }
+            body.theme-detail #info .info-hero-meta {
+                grid-template-columns: 1fr;
+            }
+            body.theme-detail #info .info-aside {
+                position: static;
+            }
+            body.theme-detail #info .description-grid,
+            body.theme-detail #info .desc-grid {
+                grid-template-columns: 1fr;
+            }
+            body.theme-detail #info .edit-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 1100px) {
+            body.theme-detail #info .info-header {
+                grid-template-columns: 1fr;
+            }
+            body.theme-detail #info .info-content-grid {
+                grid-template-columns: 1fr;
+            }
+            body.theme-detail #info .info-edit {
+                border-left: none;
+                padding-left: 0;
+                border-top: 1px solid var(--stroke);
+                padding-top: 20px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body.theme-detail #info .info-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    
+        body.theme-detail #info .info-content {
+            margin-top: 24px;
+        }
+
+        body.theme-detail #info .info-columns {
+            display: grid;
+            grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+            gap: 24px;
+            align-items: start;
+        }
+
+        body.theme-detail #info .info-panel,
+        body.theme-detail #info .edit-panel {
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            padding: 0;
+            box-shadow: none;
+        }
+
+        body.theme-detail #info .edit-panel {
+            border-left: 1px solid var(--stroke);
+            padding-left: 24px;
+        }
+
+        body.theme-detail #info .info-panel h3,
+        body.theme-detail #info .edit-panel h3 {
+            font-family: var(--font-serif);
+            font-size: 18px;
+            margin: 0 0 14px;
+            color: var(--ink);
+        }
+
+        body.theme-detail #info .info-table {
+            display: grid;
+            gap: 10px;
+        }
+
+        body.theme-detail #info .info-row {
+            display: grid;
+            grid-template-columns: 120px minmax(0, 1fr);
+            gap: 12px;
+            padding: 8px 0;
+            border-bottom: 1px dashed var(--stroke);
+            font-size: 14px;
+        }
+
+        body.theme-detail #info .info-row:last-child {
+            border-bottom: none;
+        }
+
+        body.theme-detail #info .info-row .label {
+            color: var(--muted);
+            font-size: 13px;
+            letter-spacing: 0.2px;
+        }
+
+        body.theme-detail #info .info-row .value {
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        body.theme-detail #info .info-subtitle {
+            margin: 16px 0 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--ink);
+        }
+
+        body.theme-detail #info .info-divider {
+            height: 1px;
+            background: var(--stroke);
+            margin: 16px 0;
+        }
+
+        body.theme-detail #info .info-block {
+            border: 1px solid var(--stroke);
+            background: var(--surface-strong);
+            border-radius: 12px;
+            padding: 12px 14px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        body.theme-detail #info .info-block p {
+            margin: 0;
+        }
+
+        body.theme-detail #info .edit-group {
+            margin-top: 18px;
+        }
+
+        body.theme-detail #info .edit-group:first-of-type {
+            margin-top: 0;
+        }
+
+        body.theme-detail #info .edit-group h4 {
+            margin: 0 0 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            letter-spacing: 0.2px;
+        }
+
+        @media (max-width: 1200px) {
+            body.theme-detail #info .info-columns {
+                grid-template-columns: 1fr;
+            }
+
+            body.theme-detail #info .edit-panel {
+                border-left: none;
+                padding-left: 0;
+                padding-top: 24px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body.theme-detail #info .info-row {
+                grid-template-columns: 1fr;
+            }
+        }
+</style>
+</head>
+<body class="page-theme theme-detail">
+    <div class="app-layout">
+        <!-- 顶部导航 -->
+        {% include 'core/partials/navbar.html' %}
+        
+        <!-- 主要内容区域 -->
+        <main class="app-main">
+            <div class="app-content">
+                <!-- 页面头部 -->
+                <div class="page-header">
+                    <div class="container">
+                        <div class="page-header-content">
+                            <div>
+                                <nav class="breadcrumb">
+                                    <a href="{% url 'project_list' %}" class="breadcrumb-item">
+                                        <i class="fas fa-home"></i>
+                                        课题列表
+                                    </a>
+                                    <span class="breadcrumb-separator">/</span>
+                                    <span class="breadcrumb-item active">{{ project.name }}</span>
+                                </nav>
+                                <h1 class="page-title">
+                                    <i class="fas fa-project-diagram"></i>
+                                    {{ project.name }}
+                                </h1>
+                                <p class="page-subtitle">课题编号：{{ project.project_id }} | 负责人：{{ project.project_lead }}</p>
+                            </div>
+                            <div class="page-actions">
+                                <a href="{% url 'project_list' %}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i>
+                                    返回列表
+                                </a>
+                                {% if enable_web_file_trial %}
+                                <a href="{% url 'file_manager_trial' project.project_id %}" class="btn btn-outline-primary">
+                                    <i class="fas fa-flask"></i>
+                                    Web文件管理（试用）
+                                </a>
+                                {% endif %}
+                                <button class="btn btn-primary" onclick="openProjectFolder('{{ project.directory_path|escapejs }}')">
+                                    <i class="fas fa-folder-open"></i>
+                                    打开文件夹
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 页面内容 -->
+                <div class="page-body">
+                    <div class="container">
+                        <!-- 现代化功能导航标签页 -->
+                        <div class="tab-navigation">
+                            <nav class="tab-nav">
+                                <button class="tab-nav-item active" onclick="openTab(event, 'info')">
+                                    <i class="fas fa-info-circle"></i>
+                                    <span>课题信息</span>
+                                </button>
+                                <button class="tab-nav-item" onclick="openTab(event, 'files')">
+                                    <i class="fas fa-folder-open"></i>
+                                    <span>文件管理</span>
+                                </button>
+                                <button class="tab-nav-item" onclick="openTab(event, 'content-analysis')">
+                                    <i class="fas fa-brain"></i>
+                                    <span>研究内容分析</span>
+                                </button>
+                                <button class="tab-nav-item" onclick="openTab(event, 'metrics-analysis')">
+                                    <i class="fas fa-chart-line"></i>
+                                    <span>产出指标分析</span>
+                                </button>
+                            </nav>
+                        </div>
+
+                        <!-- 标签页内容 -->
+                        <div class="tab-container">
+                    <!-- 课题信息 -->
+                    <div id="info" class="tab-content active">
+                        <div class="info-shell">
+                            <div class="info-header">
+                                <div class="info-title-group">
+                                    <span class="info-code">{{ project.project_id }}</span>
+                                    <h2 class="info-title">{{ project.name }}</h2>
+                                    <div class="info-tags">
+                                        <span class="info-tag status">{{ project.status|default:"-" }}</span>
+                                        <span class="info-tag">{{ project.level|default:"-" }}</span>
+                                        <span class="info-tag">{{ project.project_type|default:"-" }}</span>
+                                        <span class="info-tag">{{ project.ownership|default:"-" }}</span>
+                                    </div>
+                                </div>
+                                <div class="info-meta">
+                                    <div class="meta-row">
+                                        <span>负责人</span>
+                                        <strong>{{ project.project_lead|default:"-" }}</strong>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span>联系人</span>
+                                        <strong>{{ project.contact_person|default:"-" }}</strong>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span>承办单位</span>
+                                        <strong>{{ project.managing_unit|default:"-" }}</strong>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span>周期</span>
+                                        <strong>
+                                            {% if project.start_date %}{{ project.start_date|date:"Y-m-d" }}{% else %}-{% endif %}
+                                            ~
+                                            {% if project.extension_date %}
+                                                {{ project.extension_date|date:"Y-m-d" }}
+                                            {% elif project.planned_end_date %}
+                                                {{ project.planned_end_date|date:"Y-m-d" }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </strong>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="info-content">
+                                <div class="info-columns">
+                                    <section class="info-panel">
+                                        <h3>课题信息</h3>
+                                        <div class="info-table">
+                                            <div class="info-row">
+                                                <div class="label">课题编号</div>
+                                                <div class="value">{{ project.project_id }}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">课题级别</div>
+                                                <div class="value">{{ project.level|default:"-" }}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">课题类型</div>
+                                                <div class="value">{{ project.project_type|default:"-" }}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">课题归属</div>
+                                                <div class="value">{{ project.ownership|default:"-" }}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">参与角色</div>
+                                                <div class="value">{{ project.role|default:"-" }}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">归口单位</div>
+                                                <div class="value">{{ project.managing_unit|default:"-" }}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">负责人</div>
+                                                <div class="value">{{ project.project_lead|default:"-" }}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">联系人</div>
+                                                <div class="value">{{ project.contact_person|default:"-" }}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">状态</div>
+                                                <div class="value">{{ project.status|default:"-" }}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">开始日期</div>
+                                                <div class="value">{% if project.start_date %}{{ project.start_date|date:"Y-m-d" }}{% else %}-{% endif %}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">计划结束</div>
+                                                <div class="value">{% if project.planned_end_date %}{{ project.planned_end_date|date:"Y-m-d" }}{% else %}-{% endif %}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">延期日期</div>
+                                                <div class="value">{% if project.extension_date %}{{ project.extension_date|date:"Y-m-d" }}{% else %}-{% endif %}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">实际结题</div>
+                                                <div class="value">{% if project.actual_completion_date %}{{ project.actual_completion_date|date:"Y-m-d" }}{% else %}-{% endif %}</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="info-divider"></div>
+                                        <div class="info-subtitle">经费信息（万元）</div>
+                                        <div class="info-table">
+                                            <div class="info-row">
+                                                <div class="label">总预算</div>
+                                                <div class="value">{{ project.total_budget|default:"-" }}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">外部专项</div>
+                                                <div class="value">{{ project.external_funding|default:"-" }}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">院专项</div>
+                                                <div class="value">{{ project.institute_funding|default:"-" }}</div>
+                                            </div>
+                                            <div class="info-row">
+                                                <div class="label">单位自筹</div>
+                                                <div class="value">{{ project.unit_funding|default:"-" }}</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="info-divider"></div>
+                                        <div class="info-subtitle">研究内容</div>
+                                        <div class="info-block">
+                                            <p>{{ project.research_content|default:"暂无研究内容" }}</p>
+                                            {% if research_analysis %}
+                                                <div class="analysis-info">
+                                                    <p><small><strong>提示：</strong> 可在<a href="#content-analysis" onclick="openTab(event, 'content-analysis')" style="color: var(--primary-color);">研究内容分析</a>标签页更新解析结果。</small></p>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+
+                                        <div class="info-subtitle">备注</div>
+                                        <div class="info-block">
+                                            <p>{{ project.remarks|default:"暂无备注" }}</p>
+                                        </div>
+                                    </section>
+
+                                    <section class="edit-panel">
+                                        <h3>编辑信息</h3>
+                                        <form method="post" class="edit-form">
+                                            {% csrf_token %}
+                                            {{ form.non_field_errors }}
+                                            {{ form.research_content }}
+
+                                            <div class="edit-group">
+                                                <h4>核心信息</h4>
+                                                <div class="edit-grid">
+                                                    <div class="form-group">
+                                                        <label>课题编号</label>
+                                                        {{ form.project_id }}
+                                                        {% if form.project_id.help_text %}
+                                                            <div class="form-help">{{ form.project_id.help_text }}</div>
+                                                        {% endif %}
+                                                        {% if form.project_id.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.project_id.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="form-group form-group-full">
+                                                        <label>课题名称</label>
+                                                        {{ form.name }}
+                                                        {% if form.name.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.name.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>课题级别</label>
+                                                        {{ form.level }}
+                                                        {% if form.level.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.level.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>课题类型</label>
+                                                        {{ form.project_type }}
+                                                        {% if form.project_type.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.project_type.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="edit-group">
+                                                <h4>归属与角色</h4>
+                                                <div class="edit-grid">
+                                                    <div class="form-group">
+                                                        <label>课题归属</label>
+                                                        {{ form.ownership }}
+                                                        {% if form.ownership.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.ownership.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>归口单位</label>
+                                                        {{ form.managing_unit }}
+                                                        {% if form.managing_unit.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.managing_unit.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>参与角色</label>
+                                                        {{ form.role }}
+                                                        {% if form.role.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.role.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>状态</label>
+                                                        {{ form.status }}
+                                                        {% if form.status.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.status.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="edit-group">
+                                                <h4>时间与联系人</h4>
+                                                <div class="edit-grid">
+                                                    <div class="form-group">
+                                                        <label>开始日期</label>
+                                                        {{ form.start_date }}
+                                                        {% if form.start_date.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.start_date.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>计划结束日期</label>
+                                                        {{ form.planned_end_date }}
+                                                        {% if form.planned_end_date.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.planned_end_date.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>延期日期</label>
+                                                        {{ form.extension_date }}
+                                                        {% if form.extension_date.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.extension_date.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>实际完成日期</label>
+                                                        {{ form.actual_completion_date }}
+                                                        {% if form.actual_completion_date.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.actual_completion_date.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>负责人</label>
+                                                        {{ form.project_lead }}
+                                                        {% if form.project_lead.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.project_lead.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>联系人</label>
+                                                        {{ form.contact_person }}
+                                                        {% if form.contact_person.errors %}
+                                                            <div class="form-error">
+                                                                {% for error in form.contact_person.errors %}
+                                                                    <i class="fas fa-exclamation-circle"></i> {{ error }}
+                                                                {% endfor %}
+                                                            </div>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="edit-group">
+                                                <h4>经费信息（万元）</h4>
+                                                <div class="edit-grid">
+                                                    <div class="form-group">
+                                                        <label>总预算</label>
+                                                        {{ form.total_budget }}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>外部专项</label>
+                                                        {{ form.external_funding }}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>院专项</label>
+                                                        {{ form.institute_funding }}
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>单位自筹</label>
+                                                        {{ form.unit_funding }}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="edit-group">
+                                                <h4>研究内容与备注</h4>
+                                                <div class="edit-grid">
+                                                    <div class="form-group form-group-full">
+                                                        <label>研究内容</label>
+                                                        {{ form.research_content_manual }}
+                                                    </div>
+                                                    <div class="form-group form-group-full">
+                                                        <label>备注</label>
+                                                        {{ form.remarks }}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-actions">
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="fas fa-save"></i>
+                                                    保存修改
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </section>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="files" class="tab-content">
+                        <div class="content-section">
+                            <div class="content-section-header">
+                                <h2 class="content-section-title">
+                                    <i class="fas fa-folder"></i>
+                                    文件管理
+                                </h2>
+                                <div class="content-section-actions">
+                                    <button class="btn btn-secondary" onclick="refreshFileTree()">
+                                        <i class="fas fa-sync-alt"></i>
+                                        刷新文件树
+                                    </button>                                <button class="btn btn-primary" onclick="openProjectFolder('{{ project.directory_path|escapejs }}')">
+                                        <i class="fas fa-external-link-alt"></i>
+                                        打开项目文件夹
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="content-section-body">
+                                <div class="file-management-grid">
+                                    <!-- 文件树区域 -->
+                                    <div class="file-tree-section">
+                                        <div class="file-tree-card">
+                                            <div class="file-tree-header">
+                                                <h4>
+                                                    <i class="fas fa-sitemap"></i>
+                                                    文件目录
+                                                </h4>
+                                                <div class="file-tree-stats">
+                                                    <span class="file-count" id="file-count">加载中...</span>
+                                                </div>
+                                            </div>
+                                            <div class="file-tree-body">
+                                                <div class="file-tree">
+                                                    {% if file_tree %}
+                                                        {% with template_name="core/file_tree_node.html" %}
+                                                            <ul>
+                                                                {% for node in file_tree %}
+                                                                    {% include template_name with node=node project=project %}
+                                                                {% endfor %}
+                                                            </ul>
+                                                        {% endwith %}
+                                                    {% else %}
+                                                        <div class="empty-state">
+                                                            <div class="empty-state-icon">
+                                                                <i class="fas fa-folder-open"></i>
+                                                            </div>
+                                                            <h4>项目目录为空</h4>
+                                                            <p>当前项目还没有任何文件。</p>
+                                                            <p>您可以通过右侧的文件操作面板上传文件或创建文件夹。</p>
+                                                            <div class="empty-state-actions">                                <button class="btn btn-primary" onclick="openProjectFolder('{{ project.directory_path|escapejs }}')">
+                                                                    <i class="fas fa-folder-open"></i>
+                                                                    打开项目文件夹
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 文件操作区域 -->
+                                    <div class="file-operations-section">
+                                        <div class="file-operations-card">
+                                            <div class="file-operations-header">
+                                                <h4>
+                                                    <i class="fas fa-tools"></i>
+                                                    文件操作
+                                                </h4>
+                                            </div>
+                                            <div class="file-operations-body">
+                                                <div class="operation-info">
+                                                    <label>当前操作目录</label>
+                                                    <span id="current-operation-path" class="operation-path">{{ project.name }}（根目录）</span>
+                                                </div>
+                                                
+                                                <div class="operation-section">
+                                                    <h5>
+                                                        <i class="fas fa-upload"></i>
+                                                        上传文件
+                                                    </h5>
+                                                    <form method="post" enctype="multipart/form-data" action="{% url 'file_action' project.project_id 'upload' %}" id="upload-form">
+                                                        {% csrf_token %}
+                                                        <div class="form-group">
+                                                            <input type="file" name="files" multiple required class="form-control">
+                                                            <input type="hidden" name="target_path" id="target_path" value="{{ relative_directory_path }}">
+                                                        </div>
+                                                        <button type="submit" class="btn btn-primary btn-sm">
+                                                            <i class="fas fa-upload"></i>
+                                                            上传到 <span id="upload-target-name">根目录</span>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                                
+                                                <div class="operation-section">
+                                                    <h5>
+                                                        <i class="fas fa-folder-plus"></i>
+                                                        创建文件夹
+                                                    </h5>
+                                                    <form method="post" action="{% url 'file_action' project.project_id 'create_folder' %}" id="create-folder-form">
+                                                        {% csrf_token %}
+                                                        <div class="form-group">
+                                                            <input type="text" name="folder_name" placeholder="输入文件夹名称" required class="form-control">
+                                                            <input type="hidden" name="parent_path" id="parent_path" value="{{ relative_directory_path }}">
+                                                        </div>
+                                                        <button type="submit" class="btn btn-secondary btn-sm">
+                                                            <i class="fas fa-folder-plus"></i>
+                                                            在 <span id="create-target-name">根目录</span> 中创建
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="file-info-card">
+                                            <div class="file-info-header">
+                                                <h4>
+                                                    <i class="fas fa-info-circle"></i>
+                                                    目录信息
+                                                </h4>
+                                            </div>
+                                            <div class="file-info-body">
+                                                <div id="folder-info" class="folder-info-content">
+                                                    <div class="empty-state">
+                                                        <i class="fas fa-folder-open"></i>
+                                                        <p>选择左侧文件夹查看详细信息</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 研究内容分析 -->
+                    <div id="content-analysis" class="tab-content">
+                        <div class="content-section">
+                            <div class="content-section-header">
+                                <h2 class="content-section-title">
+                                    <i class="fas fa-search"></i>
+                                    研究内容分析
+                                </h2>
+                                <p class="content-section-subtitle">您可以上传课题申报书或任务书让系统自动分析，也可以手动编辑分析结果。</p>
+                            </div>
+                            <div class="content-section-body">
+                                <!-- API状态提示 -->
+                                {% if not api_status.has_config %}
+                                    <div class="alert alert-danger">
+                                        <div class="alert-icon">
+                                            <i class="fas fa-exclamation-triangle"></i>
+                                        </div>
+                                        <div class="alert-content">
+                                            <h5>未配置AI服务</h5>
+                                            <ul>
+                                                <li>请先<a href="{% url 'api_config' %}" target="_blank">配置API密钥</a>以启用AI分析功能</li>
+                                                <li>您仍可以使用手动编辑功能添加分析结果</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                {% elif not api_status.deepseek_available and not api_status.kimi_available %}
+                                    <div class="alert alert-warning">
+                                        <div class="alert-icon">
+                                            <i class="fas fa-exclamation-circle"></i>
+                                        </div>
+                                        <div class="alert-content">
+                                            <h5>API服务未过测试</h5>
+                                            <ul>
+                                                <li>请在<a href="{% url 'api_config' %}" target="_blank">API配置页面</a>测试连接</li>
+                                                <li>确保API密钥正确且账户有余额</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <div class="alert alert-success">
+                                        <div class="alert-icon">
+                                            <i class="fas fa-check-circle"></i>
+                                        </div>
+                                        <div class="alert-content">
+                                            <h5>AI分析服务就绪</h5>
+                                            <ul>
+                                                <li>可用服务: 
+                                                    {% if api_status.deepseek_available %}DeepSeek{% endif %}
+                                                    {% if api_status.deepseek_available and api_status.kimi_available %} 和 {% endif %}
+                                                    {% if api_status.kimi_available %}Kimi{% endif %}
+                                                </li>
+                                                <li>支持格式: Word(.doc/.docx)、PDF(.pdf)、文本(.txt) 等多种格式</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                                
+                                <div class="analysis-actions-grid">
+                                    <div class="analysis-action-card">
+                                        <div class="analysis-action-header">
+                                            <h4>
+                                                <i class="fas fa-file-upload"></i>
+                                                文件分析
+                                            </h4>
+                                        </div>
+                                        <div class="analysis-action-body">
+                                            <form method="post" enctype="multipart/form-data" action="{% url 'analyze_content' project.project_id 'research_content' %}">
+                                                {% csrf_token %}
+                                                <div class="form-group">
+                                                    <label>选择文件</label>
+                                                    <input type="file" name="files" accept=".pdf,.doc,.docx,.txt" required class="form-control">
+                                                    <small class="form-text text-muted">支持 PDF、Word、TXT 格式文件</small>
+                                                </div>
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="fas fa-upload"></i>
+                                                    上传并分析
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="analysis-action-card">
+                                        <div class="analysis-action-header">
+                                            <h4>
+                                                <i class="fas fa-edit"></i>
+                                                手动编辑
+                                            </h4>
+                                        </div>
+                                        <div class="analysis-action-body">
+                                            <p>直接编辑研究内容分析结果</p>
+                                            <button type="button" class="btn btn-secondary" onclick="toggleEditMode('research_content')">
+                                                <i class="fas fa-pen"></i>
+                                                <span id="edit-btn-research_content">开始编辑</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {% if research_analysis %}
+                                    <div class="analysis-meta-card">
+                                        <div class="analysis-meta-item">
+                                            <i class="fas fa-clock"></i>
+                                            <span>最近更新：{{ research_analysis.updated_at|date:"Y-m-d H:i" }}</span>
+                                        </div>
+                                        <div class="analysis-meta-item">
+                                            <i class="fas fa-file"></i>
+                                            <span>来源：{{ research_analysis.file_name|default:"手动编辑" }}</span>
+                                        </div>
+                                        {% if research_analysis.confidence_score %}
+                                            <div class="analysis-meta-item">
+                                                <i class="fas fa-chart-line"></i>
+                                                <span>AI置信度：{{ research_analysis.confidence_score|floatformat:1 }}</span>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
+                                
+                                <div class="analysis-results-section">
+                                    <h4>
+                                        <i class="fas fa-chart-bar"></i>
+                                        分析结果
+                                    </h4>
+                                    <div id="content-view-research_content" class="analysis-result-content">
+                                        {% if research_analysis %}
+                                            {{ research_analysis.analysis_result|linebreaks }}
+                                        {% else %}
+                                            <div class="empty-state">
+                                                <div class="empty-state-icon">
+                                                    <i class="fas fa-file-alt"></i>
+                                                </div>
+                                                <h5>暂无分析结果</h5>
+                                                <p>请上传相关文档进行分析或手动编辑。</p>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div id="content-edit-research_content" class="edit-mode" style="display: none;">
+                                        <form method="post" action="{% url 'edit_analysis' project.project_id 'research_content' %}">
+                                            {% csrf_token %}
+                                            <div class="form-group">
+                                                <textarea name="analysis_result" rows="15" class="form-control">{{ research_analysis.analysis_result|default:"" }}</textarea>
+                                            </div>
+                                            <div class="form-actions">
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="fas fa-save"></i>
+                                                    保存更改
+                                                </button>
+                                                <button type="button" class="btn btn-secondary" onclick="toggleEditMode('research_content')">
+                                                    <i class="fas fa-times"></i>
+                                                    取消
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+        
+                    <!-- 产出指标分析 -->
+                    <div id="metrics-analysis" class="tab-content">
+                        <div class="content-section">
+                            <div class="content-section-header">
+                                <h2 class="content-section-title">
+                                    <i class="fas fa-chart-line"></i>
+                                    产出指标分析
+                                </h2>
+                                <p class="content-section-subtitle">您可以上传课题申报书或任务书让系统自动分析，也可以手动编辑分析结果。</p>
+                            </div>
+                            <div class="content-section-body">
+                                <!-- API状态提示 -->
+                                {% if not api_status.has_config %}
+                                    <div class="alert alert-danger">
+                                        <div class="alert-icon">
+                                            <i class="fas fa-exclamation-triangle"></i>
+                                        </div>
+                                        <div class="alert-content">
+                                            <h5>未配置AI服务</h5>
+                                            <ul>
+                                                <li>请先<a href="{% url 'api_config' %}" target="_blank">配置API密钥</a>以启用AI分析功能</li>
+                                                <li>您仍可以使用手动编辑功能添加分析结果</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                {% elif not api_status.deepseek_available and not api_status.kimi_available %}
+                                    <div class="alert alert-warning">
+                                        <div class="alert-icon">
+                                            <i class="fas fa-exclamation-circle"></i>
+                                        </div>
+                                        <div class="alert-content">
+                                            <h5>API服务未过测试</h5>
+                                            <ul>
+                                                <li>请在<a href="{% url 'api_config' %}" target="_blank">API配置页面</a>测试连接</li>
+                                                <li>确保API密钥正确且账户有余额</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <div class="alert alert-success">
+                                        <div class="alert-icon">
+                                            <i class="fas fa-check-circle"></i>
+                                        </div>
+                                        <div class="alert-content">
+                                            <h5>AI分析服务就绪</h5>
+                                            <ul>
+                                                <li>可用服务: 
+                                                    {% if api_status.deepseek_available %}DeepSeek{% endif %}
+                                                    {% if api_status.deepseek_available and api_status.kimi_available %} 和 {% endif %}
+                                                    {% if api_status.kimi_available %}Kimi{% endif %}
+                                                </li>
+                                                <li>支持格式: Word(.doc/.docx)、PDF(.pdf)、文本(.txt) 等多种格式</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                                
+                                <div class="alert alert-info">
+                                    <div class="alert-icon">
+                                        <i class="fas fa-lightbulb"></i>
+                                    </div>
+                                    <div class="alert-content">
+                                        <h5>AI分析功能说明</h5>
+                                        <ul>
+                                            <li>系统会智能提取产出指标：技术成果、学术成果、标准规范、人才培养、经济效益等</li>
+                                            <li>分析结果包含具体数量和时间节点，符合科研项目管理要求</li>
+                                            <li>支持手动编辑和补充AI分析结果</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                
+                                <div class="analysis-actions-grid">
+                                    <div class="analysis-action-card">
+                                        <div class="analysis-action-header">
+                                            <h4>
+                                                <i class="fas fa-file-upload"></i>
+                                                文件分析
+                                            </h4>
+                                        </div>
+                                        <div class="analysis-action-body">
+                                            <form method="post" enctype="multipart/form-data" action="{% url 'analyze_content' project.project_id 'output_metrics' %}">
+                                                {% csrf_token %}
+                                                <div class="form-group">
+                                                    <label>选择文件</label>
+                                                    <input type="file" name="files" accept=".pdf,.doc,.docx,.txt" required class="form-control">
+                                                    <small class="form-text text-muted">支持 PDF、Word、TXT 格式文件</small>
+                                                </div>
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="fas fa-upload"></i>
+                                                    上传并分析
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="analysis-action-card">
+                                        <div class="analysis-action-header">
+                                            <h4>
+                                                <i class="fas fa-edit"></i>
+                                                手动编辑
+                                            </h4>
+                                        </div>
+                                        <div class="analysis-action-body">
+                                            <p>直接编辑产出指标分析结果</p>
+                                            <button type="button" class="btn btn-secondary" onclick="toggleEditMode('output_metrics')">
+                                                <i class="fas fa-pen"></i>
+                                                <span id="edit-btn-output_metrics">开始编辑</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {% if metrics_analysis %}
+                                    <div class="analysis-meta-card">
+                                        <div class="analysis-meta-item">
+                                            <i class="fas fa-clock"></i>
+                                            <span>最近更新：{{ metrics_analysis.updated_at|date:"Y-m-d H:i" }}</span>
+                                        </div>
+                                        <div class="analysis-meta-item">
+                                            <i class="fas fa-file"></i>
+                                            <span>来源：{{ metrics_analysis.file_name|default:"手动编辑" }}</span>
+                                        </div>
+                                        {% if metrics_analysis.confidence_score %}
+                                            <div class="analysis-meta-item">
+                                                <i class="fas fa-chart-line"></i>
+                                                <span>AI置信度：{{ metrics_analysis.confidence_score|floatformat:1 }}</span>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
+                                
+                                <div class="analysis-results-section">
+                                    <h4>
+                                        <i class="fas fa-chart-bar"></i>
+                                        分析结果
+                                    </h4>
+                                    <div id="content-view-output_metrics" class="analysis-result-content">
+                                        {% if metrics_items_by_category %}
+                                            {% for category, items in metrics_items_by_category.items %}
+                                                <div class="metrics-category mb-4">
+                                                    <h5 class="category-title">
+                                                        <i class="fas fa-tag"></i>
+                                                        {{ category }}
+                                                    </h5>
+                                                    <div class="table-responsive">
+                                                        <table class="table table-striped table-hover">
+                                                            <thead class="table-dark">
+                                                                <tr>
+                                                                    <th style="width: 25%">指标名称</th>
+                                                                    <th style="width: 15%">目标值</th>
+                                                                    <th style="width: 15%">当前值</th>
+                                                                    <th style="width: 15%">完成状态</th>
+                                                                    <th style="width: 15%">截止日期</th>
+                                                                    <th style="width: 15%">操作</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {% for item in items %}
+                                                                    <tr>
+                                                                        <td>
+                                                                            <strong>{{ item.item_name }}</strong>
+                                                                            {% if item.notes %}
+                                                                                <br><small class="text-muted">{{ item.notes }}</small>
+                                                                            {% endif %}
+                                                                        </td>
+                                                                        <td>{{ item.target_value|default:"-" }}</td>
+                                                                        <td>
+                                                                            <span id="current-value-{{ item.id }}">{{ item.current_value|default:"-" }}</span>
+                                                                        </td>
+                                                                        <td>
+                                                                            <span class="badge {% if item.status == 'completed' %}bg-success{% elif item.status == 'in_progress' %}bg-warning{% else %}bg-secondary{% endif %}">
+                                                                                {% if item.status == 'completed' %}Completed{% elif item.status == 'in_progress' %}In Progress{% else %}Pending{% endif %}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td>{{ item.deadline|default:"-" }}</td>
+                                                                        <td>
+                                                                            <button class="btn btn-sm btn-outline-primary" onclick="editMetricsItem({{ item.id }}, '{{ item.current_value|default:'' }}', '{{ item.status }}', '{{ item.notes|default:'' }}')" type="button">
+                                                                                <i class="fas fa-edit"></i>
+                                                                            </button>
+                                                                        </td>
+                                                                    </tr>
+                                                                {% endfor %}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            {% endfor %}
+                                        {% elif metrics_analysis %}
+                                            <div class="alert alert-info">
+                                                <i class="fas fa-info-circle"></i>
+                                                检测到原始分析结果，请重新保存以生成指标表格。
+                                            </div>
+                                            {{ metrics_analysis.analysis_result|linebreaks }}
+                                        {% else %}
+                                            <div class="empty-state">
+                                                <div class="empty-state-icon">
+                                                    <i class="fas fa-chart-pie"></i>
+                                                </div>
+                                                <h5>暂无分析结果</h5>
+                                                <p>请上传相关文档进行分析或手动编辑。</p>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div id="content-edit-output_metrics" class="edit-mode" style="display: none;">
+                                        <form method="post" action="{% url 'edit_analysis' project.project_id 'output_metrics' %}">
+                                            {% csrf_token %}
+                                            <div class="form-group">
+                                                <textarea name="analysis_result" rows="15" class="form-control">{{ metrics_analysis.analysis_result|default:"" }}</textarea>
+                                            </div>
+                                            <div class="form-actions">
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="fas fa-save"></i>
+                                                    保存更改
+                                                </button>
+                                                <button type="button" class="btn btn-secondary" onclick="toggleEditMode('output_metrics')">
+                                                    <i class="fas fa-times"></i>
+                                                    取消
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+    </div>
+
+    <script>
+        const NETWORK_SHARE_CONFIG = {
+            enabled: {{ enable_network_share|yesno:"true,false" }},
+            path: "{{ network_share_path|default:''|escapejs }}"
+        };
+        const PROTOCOL_SETUP_REG_PATH = "{{ protocol_setup_reg_path|default:''|escapejs }}";
+        const CLIENT_PROTOCOL_SETUP_REG_PATH = "{{ client_setup_reg_path|default:''|escapejs }}";
+
+        function openTab(evt, tabName) {
+            document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+            document.querySelectorAll('.nav-link').forEach(nl => nl.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active');
+            evt.currentTarget.classList.add('active');
+            window.location.hash = tabName;
+        }
+
+        function setUploadTarget(path, name) {
+            document.getElementById('target_path').value = path;
+            document.getElementById('upload-target-name').textContent = name;
+            
+            // Also update create folder target
+            document.getElementById('parent_path').value = path;
+            document.getElementById('create-target-name').textContent = name;
+            
+            // Update current operation path display
+            document.getElementById('current-operation-path').textContent = name;
+            
+            // Update folder info
+            updateFolderInfo(path, name);
+        }
+        
+        function updateFolderInfo(path, name) {
+            const folderInfoElement = document.getElementById('folder-info');
+            folderInfoElement.innerHTML = `
+                <strong>目录名称：</strong> ${name}<br>
+                <strong>路径：</strong> ${path}<br>
+                <strong>操作：</strong> 您可以在此目录中上传文件或创建子文件夹。
+            `;
+        }
+        
+        function toggleEditMode(analysisType) {
+            const viewElement = document.getElementById('content-view-' + analysisType);
+            const editElement = document.getElementById('content-edit-' + analysisType);
+            const btnElement = document.getElementById('edit-btn-' + analysisType);
+            
+            if (viewElement.style.display === 'none') {
+                // 当前在编辑模式，切换到查看模式
+                viewElement.style.display = 'block';
+                editElement.style.display = 'none';
+                btnElement.textContent = '开始编辑';
+            } else {
+                // 当前在查看模式，切换到编辑模式
+                viewElement.style.display = 'none';
+                editElement.style.display = 'block';
+                btnElement.textContent = '取消编辑';
+            }
+        }
+        
+        function refreshFileTree() {
+            // 浣跨敤AJAX刷新文件树，避免整页刷新
+            const fileCountElement = document.getElementById('file-count');
+            const fileTreeContainer = document.querySelector('.file-tree');
+            
+            if (fileCountElement) {
+                fileCountElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 刷新中...';
+            }
+            
+            // 使用新的API端点获取JSON格式的文件树数据
+            const apiUrl = `/project/{{ project.project_id }}/file-tree/`;
+            
+            fetch(apiUrl, {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    // 更新文件统计信息
+                    if (fileCountElement && data.stats) {
+                        const stats = data.stats;
+                        fileCountElement.innerHTML = `
+                            <span class="stat-item">
+                                <i class="fas fa-file"></i>
+                                ${stats.file_count} 文件
+                            </span>
+                            <span class="stat-item">
+                                <i class="fas fa-folder"></i>
+                                ${stats.folder_count} 文件夹
+                            </span>
+                        `;
+                    }
+                    
+                    // 重新构建文件树HTML
+                    if (fileTreeContainer && data.file_tree) {
+                        fileTreeContainer.innerHTML = buildFileTreeHTML(data.file_tree);
+                        
+                        // 重新绑定事件监听
+                        bindFileTreeEvents();
+                    }
+                    
+                    // 显示成功消息
+                    showNotification('文件树已刷新', 'success');
+                } else {
+                    throw new Error('API返回失败状态');
+                }
+            })
+            .catch(error => {
+                console.error('刷新文件树失败:', error);
+                if (fileCountElement) {
+                    fileCountElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 刷新失败';
+                }
+                showNotification('刷新文件树失败，请重试', 'error');
+            });
+        }
+        
+        function buildFileTreeHTML(nodes) {
+            if (!nodes || nodes.length === 0) {
+                return `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <i class="fas fa-folder-open"></i>
+                        </div>
+                        <h4>项目目录为空</h4>
+                        <p>当前项目还没有任何文件。</p>
+                        <p>您可以通过右侧的文件操作面板上传文件或创建文件夹。</p>
+                    </div>
+                `;
+            }
+            
+            let html = '<ul>';
+            for (const node of nodes) {
+                html += buildNodeHTML(node);
+            }
+            html += '</ul>';
+            return html;
+        }
+        
+        function buildNodeHTML(node) {
+            const isFolder = node.type === 'folder';
+            const hasChildren = isFolder && node.children && node.children.length > 0;
+            
+            let html = '<li>';
+            
+            if (isFolder) {
+                html += `
+                    <div class="tree-node">
+                        <span class="toggler">
+                            ${hasChildren ? '+' : ''}
+                        </span>
+                        <span class="folder-icon"><i class="fas fa-folder"></i></span>
+                        <span class="folder-name"><strong>${node.name}</strong></span>
+                        <span class="folder-stats">
+                            ${(node.file_count > 0 || node.folder_count > 0) ? `(${node.file_count || 0} files, ${node.folder_count || 0} folders)` : ''}
+                        </span>
+                        <div class="actions">
+                            <a href="#" onclick="setUploadTarget('${node.path}', '${node.name}'); return false;" title="上传文件到此文件夹">上传</a>
+                            <a href="#" onclick="setUploadTarget('${node.path}', '${node.name}'); return false;" title="在此文件夹中创建子文件夹">新建</a>
+                        </div>
+                    </div>
+                `;
+                
+                if (hasChildren) {
+                    html += '<ul class="nested">';
+                    for (const child of node.children) {
+                        html += buildNodeHTML(child);
+                    }
+                    html += '</ul>';
+                }
+            } else {
+                const fileSize = node.size || '未知大小';
+                const modTime = node.modified_time || '';
+                const sizeAndTime = modTime ? `${fileSize}, ${modTime}` : fileSize;
+                
+                html += `
+                    <div class="tree-node">
+                        <span class="file-spacer"></span>
+                        <span class="file-icon"><i class="fas fa-file"></i></span>
+                        <span class="file-name">${node.name}</span>
+                        <span class="file-size">
+                            (${sizeAndTime})
+                        </span>
+                        <div class="actions">
+                            <a href="/project/${window.location.pathname.split('/')[2]}/file/preview/?path=${encodeURIComponent(node.path)}" target="_blank" title="预览文件">预览</a>
+                            <a href="/project/${window.location.pathname.split('/')[2]}/file/download/?path=${encodeURIComponent(node.path)}" title="下载文件">下载</a>
+                            <a href="/project/${window.location.pathname.split('/')[2]}/file/delete/?path=${encodeURIComponent(node.path)}" class="delete" onclick="return confirm('确定要删除这个文件吗？');" title="删除文件">删除</a>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            html += '</li>';
+            return html;
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+
+        
+        function getProjectFolderName(folderPath) {
+            if (!folderPath) {
+                return '';
+            }
+            const trimmed = folderPath.replace(/[\\/]+$/, '');
+            const parts = trimmed.split(/[\\/]/).filter(Boolean);
+            return parts.length ? parts[parts.length - 1] : '';
+        }
+
+        function buildNetworkPath(networkRoot, projectFolderName) {
+            if (!networkRoot || !projectFolderName) {
+                return '';
+            }
+            const normalizedRoot = networkRoot.replace(/[\\/]+$/, '');
+            return `${normalizedRoot}\\${projectFolderName}`;
+        }
+
+        function escapeForJsString(value) {
+            return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        }
+
+        async function openProjectFolder(folderPath) {
+            if (!folderPath) {
+                showNotification('项目目录路径为空，无法打开', 'error');
+                return;
+            }
+
+            const projectFolderName = getProjectFolderName(folderPath);
+            if (!projectFolderName) {
+                showNotification('无法解析项目目录名称', 'error');
+                return;
+            }
+
+            const networkPath = (NETWORK_SHARE_CONFIG.enabled && NETWORK_SHARE_CONFIG.path)
+                ? buildNetworkPath(NETWORK_SHARE_CONFIG.path, projectFolderName)
+                : '';
+
+            // 统一使用自定义协议打开文件夹（无论本地还是网络客户端）
+            // 协议处理器会根据客户端配置决定使用本地路径还是网络共享路径。
+            openWithLocalProtocol(projectFolderName, folderPath, networkPath);
+        }
+        
+        function openWithLocalProtocol(projectFolderName, folderPath, networkPath) {
+            const showFallback = () => {
+                if (networkPath) {
+                    showNetworkPathModal(networkPath, projectFolderName);
+                    return;
+                }
+                showProtocolSetupModal(folderPath, folderPath);
+            };
+
+            try {
+                // 涓嶈繘琛孶RL编码，直接传递原始文件夹名称
+                const protocolUrl = `cscec-pm://open-folder/${encodeURIComponent(projectFolderName)}`;
+                
+                // 创建隐藏链接并点击触发协议
+                const link = document.createElement('a');
+                link.href = protocolUrl;
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                
+                // 监听窗口焦点变化来检测协议是否被处理
+                let protocolHandled = false;
+                
+                const blurHandler = () => {
+                    protocolHandled = true;
+                    window.removeEventListener('blur', blurHandler);
+                    if (document.body.contains(link)) {
+                        document.body.removeChild(link);
+                    }
+                    showNotification('正在打开项目文件夹...', 'success');
+                };
+                
+                window.addEventListener('blur', blurHandler);
+                
+                // 点击链接尝试打开协议
+                link.click();
+                
+                // 设置超时，如果协议未被处理则显示设置说明
+                setTimeout(() => {
+                    if (!protocolHandled) {
+                        window.removeEventListener('blur', blurHandler);
+                        if (document.body.contains(link)) {
+                            document.body.removeChild(link);
+                        }
+                        // 协议未被处理，显示设置说明
+                        showFallback();
+                    }
+                }, 1500);
+                
+            } catch (error) {
+                console.error('Protocol error:', error);
+                // 出错时显示设置说明
+                showFallback();
+            }
+        }
+        
+        function showNetworkPathModal(networkPath, projectFolderName) {
+            const modal = document.createElement('div');
+            modal.className = 'protocol-setup-modal';
+            modal.innerHTML = `
+                <div class="modal-overlay" onclick="closeProtocolSetupModal()"></div>
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h4><i class="fas fa-folder-open"></i> 打开项目文件夹</h4>
+                        <button class="modal-close" onclick="closeProtocolSetupModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-success">
+                            <i class="fas fa-network-wired"></i>
+                            <strong>已配置网络共享路径</strong>
+                        </div>
+                        
+                        <h5><i class="fas fa-folder"></i> 网络路径</h5>
+                        <div class="path-display" style="background: var(--bg-tertiary); padding: 12px; border-radius: var(--radius-sm); margin-bottom: 16px;">
+                            <code style="font-size: 14px; word-break: break-all;">${networkPath}</code>
+                        </div>
+                        
+                        <p><strong>请选择打开方式：</strong></p>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn btn-primary" onclick="copyAndOpenExplorer('${networkPath.replace(/\\/g, '\\\\')}')">
+                                <i class="fas fa-copy"></i> 复制路径并打开资源管理器
+                            </button>
+                            <button class="btn btn-outline-primary" onclick="copyToClipboard('${networkPath.replace(/\\/g, '\\\\')}')">
+                                <i class="fas fa-clipboard"></i> 仅复制路径
+                            </button>
+                        </div>
+                        
+                        <hr>
+                        <p class="text-muted mb-0" style="font-size: 13px;">
+                            <i class="fas fa-info-circle"></i> 
+                            提示：复制路径后，在Windows资源管理器地址栏粘贴即可访问。
+                        </p>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="closeProtocolSetupModal()">
+                            <i class="fas fa-times"></i> 关闭
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        function copyAndOpenExplorer(path) {
+            navigator.clipboard.writeText(path).then(() => {
+                showNotification('路径已复制！请在资源管理器地址栏粘贴访问。', 'success');
+                // 尝试打开丢个资源管理器窗口
+                window.open('file:///C:/', '_blank');
+                closeProtocolSetupModal();
+            }).catch(err => {
+                showNotification('复制失败，请手动复制', 'error');
+            });
+        }
+        
+        function showProtocolSetupModal(fullPath, folderPath) {
+            const protocolRegPath = PROTOCOL_SETUP_REG_PATH || 'setup_protocol_handler.reg';
+            const protocolRegPathEscaped = escapeForJsString(protocolRegPath);
+            const clientRegPath = CLIENT_PROTOCOL_SETUP_REG_PATH || 'client_setup_protocol.reg';
+            const clientRegPathEscaped = escapeForJsString(clientRegPath);
+            const fullPathEscaped = escapeForJsString(fullPath);
+            const folderPathEscaped = escapeForJsString(folderPath);
+            const networkSharePath = NETWORK_SHARE_CONFIG.path || '';
+            const clientSetupHtml = NETWORK_SHARE_CONFIG.enabled ? `
+                            <li>
+                                <strong>内网客户端：</strong>
+                                <div class="code-block">
+                                    <code>${clientRegPath}</code>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="copyToClipboard('${clientRegPathEscaped}')">
+                                        <i class="fas fa-copy"></i> 复制路径
+                                    </button>
+                                </div>
+                                <small class="text-muted">
+                                    运行注册表文件后，将 <code>client_protocol_handler.bat</code> 中的 <code>NETWORK_SHARE_PATH</code> 设置为：${networkSharePath || '（请在系统设置中配置）'}
+                                </small>
+                            </li>
+            ` : '';
+
+            // 创建协议设置说明模框
+            const modal = document.createElement('div');
+            modal.className = 'protocol-setup-modal';
+            modal.innerHTML = `
+                <div class="modal-overlay" onclick="closeProtocolSetupModal()"></div>
+                <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h4><i class="fas fa-cog"></i> 设置文件夹快速打开功能</h4>
+                        <button class="modal-close" onclick="closeProtocolSetupModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>首次使用需要设置：</strong>为了能够直接打开项目文件夹，需要注册自定义协议。
+                        </div>
+                        
+                        <h5><i class="fas fa-list-ol"></i> 设置步骤</h5>
+                        <ol class="setup-steps">
+                            <li>
+                                <strong>运行注册表文件：</strong>
+                                <div class="code-block">
+                                    <code>${protocolRegPath}</code>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="copyToClipboard('${protocolRegPathEscaped}')">
+                                        <i class="fas fa-copy"></i> 复制路径
+                                    </button>
+                                </div>
+                                <small class="text-muted">双击该文件并确认添加到注册表</small>
+                            </li>
+                            ${clientSetupHtml}
+                            <li>
+                                <strong>刷新页面</strong>
+                                <small class="text-muted">设置完成后刷新页面即可使用快速打开功能</small>
+                            </li>
+                        </ol>
+                        
+                        <hr>
+                        <h5><i class="fas fa-folder"></i> 当前项目路径</h5>
+                        <div class="path-display">
+                            <code>${fullPath}</code>
+                            <button class="btn btn-sm btn-outline-primary" onclick="copyToClipboard('${fullPathEscaped}')">
+                                <i class="fas fa-copy"></i> 复制路径
+                            </button>
+                        </div>
+                        <small class="text-muted">您也可以手动复制此路径在文件管理器中打开</small>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="closeProtocolSetupModal()">
+                            <i class="fas fa-times"></i> 关闭
+                        </button>
+                        <button class="btn btn-primary" onclick="tryOpenAgain('${folderPathEscaped}')">
+                            <i class="fas fa-redo"></i> 重新尝试打开
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        function closeProtocolSetupModal() {
+            const modal = document.querySelector('.protocol-setup-modal');
+            if (modal) {
+                document.body.removeChild(modal);
+            }
+        }
+        
+        function tryOpenAgain(folderPath) {
+            closeProtocolSetupModal();
+            openProjectFolder(folderPath);
+        }
+        
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showNotification('路径已复制到剪贴板', 'success');
+            }).catch(() => {
+                // 备用复制方法
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showNotification('路径已复制到剪贴板', 'success');
+            });
+        }
+        
+        function showFolderPathModal(folderPath) {
+            // 创建模框显示文件夹路径和操作说明
+            const modal = document.createElement('div');
+            modal.className = 'folder-path-modal';
+            modal.innerHTML = `
+                <div class="modal-overlay" onclick="closeFolderPathModal()"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h4><i class="fas fa-folder-open"></i> 项目文件夹位置</h4>
+                        <button class="modal-close" onclick="closeFolderPathModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p>项目文件夹路径：</p>
+                        <div class="path-display">
+                            <code>${folderPath}</code>
+                            <button class="copy-path-btn" onclick="copyToClipboard('${folderPath.replace(/\\/g, '\\\\')}')" title="复制路径">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                        <div class="folder-instructions">
+                            <h5>如何打开文件夹：</h5>
+                            <ul>
+                                <li><strong>Windows:</strong> 按 Win+R，粘贴路径，按回车</li>
+                                <li><strong>或：</strong> 打开文件资源管理器，在地址栏粘贴路径</li>
+                                <li><strong>或：</strong> 复制路径后在文件管理器中导航</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-primary" onclick="copyToClipboard('${folderPath.replace(/\\/g, '\\\\')}')">
+                            <i class="fas fa-copy"></i> 复制路径
+                        </button>
+                        <button class="btn btn-secondary" onclick="closeFolderPathModal()">关闭</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // 添加样式
+            if (!document.getElementById('folder-modal-styles')) {
+                const styles = document.createElement('style');
+                styles.id = 'folder-modal-styles';
+                styles.textContent = `
+                    .folder-path-modal, .protocol-setup-modal {
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        z-index: 1000;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
+                    .modal-overlay {
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        background: rgba(0, 0, 0, 0.5);
+                    }
+                    .modal-content {
+                        background: white;
+                        border-radius: 8px;
+                        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+                        max-width: 600px;
+                        width: 90%;
+                        max-height: 80vh;
+                        overflow-y: auto;
+                        position: relative;
+                        z-index: 1001;
+                    }
+                    .modal-header {
+                        padding: 20px;
+                        border-bottom: 1px solid var(--border-light);
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                    }
+                    .modal-header h4 {
+                        margin: 0;
+                        color: var(--text-primary);
+                    }
+                    .modal-close {
+                        background: none;
+                        border: none;
+                        font-size: 24px;
+                        cursor: pointer;
+                        color: var(--text-tertiary);
+                    }
+                    .modal-body {
+                        padding: 20px;
+                    }
+                    .path-display {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        margin: 10px 0;
+                        padding: 10px;
+                        background: var(--bg-tertiary);
+                        border-radius: var(--radius-sm);
+                        border: 1px solid var(--border-light);
+                    }
+                    .path-display code {
+                        flex: 1;
+                        background: none;
+                        padding: 0;
+                        font-size: 14px;
+                        word-break: break-all;
+                    }
+                    .copy-path-btn {
+                        background: var(--primary-color);
+                        color: white;
+                        border: none;
+                        padding: 5px 10px;
+                        border-radius: var(--radius-sm);
+                        cursor: pointer;
+                        font-size: 12px;
+                    }
+                    .copy-path-btn:hover {
+                        background: var(--primary-dark);
+                    }
+                    .folder-instructions {
+                        margin-top: 20px;
+                        padding: 15px;
+                        background: var(--info-light);
+                        border-radius: var(--radius-sm);
+                        border-left: 4px solid var(--primary-color);
+                    }
+                    .folder-instructions h5 {
+                        margin: 0 0 10px 0;
+                        color: var(--text-primary);
+                    }
+                    .folder-instructions ul {
+                        margin: 0;
+                        padding-left: 20px;
+                    }
+                    .folder-instructions li {
+                        margin: 5px 0;
+                    }
+                    .modal-footer {
+                        padding: 20px;
+                        border-top: 1px solid var(--border-light);
+                        display: flex;
+                        gap: 10px;
+                        justify-content: flex-end;
+                    }
+                    .protocol-setup-modal .btn {
+                        padding: 8px 16px;
+                        border: none;
+                        border-radius: var(--radius-sm);
+                        cursor: pointer;
+                        text-decoration: none;
+                        display: inline-block;
+                        font-size: 14px;
+                    }
+                    .protocol-setup-modal .btn-primary {
+                        background: var(--primary-color);
+                        color: white;
+                    }
+                    .protocol-setup-modal .btn-primary:hover {
+                        background: var(--primary-dark);
+                    }
+                    .protocol-setup-modal .btn-secondary {
+                        background: var(--text-secondary);
+                        color: white;
+                    }
+                    .protocol-setup-modal .btn-secondary:hover {
+                        background: var(--text-primary);
+                    }
+                    .protocol-setup-modal .btn-outline-primary {
+                        background: transparent;
+                        color: var(--primary-color);
+                        border: 1px solid var(--primary-color);
+                    }
+                    .protocol-setup-modal .btn-outline-primary:hover {
+                        background: var(--primary-color);
+                        color: white;
+                    }
+                    .protocol-setup-modal .btn-sm {
+                        padding: 4px 8px;
+                        font-size: 12px;
+                    }
+                    .protocol-setup-modal .alert {
+                        padding: 12px;
+                        margin-bottom: 20px;
+                        border: 1px solid transparent;
+                        border-radius: var(--radius-sm);
+                    }
+                    .protocol-setup-modal .alert-info {
+                        color: var(--info-color);
+                        background-color: var(--info-light);
+                        border-color: var(--info-color);
+                    }
+                    .protocol-setup-modal .setup-steps {
+                        padding-left: 20px;
+                    }
+                    .protocol-setup-modal .setup-steps li {
+                        margin-bottom: 15px;
+                    }
+                    .protocol-setup-modal .code-block {
+                        background: var(--bg-tertiary);
+                        border: 1px solid var(--border-light);
+                        border-radius: var(--radius-sm);
+                        padding: 8px;
+                        margin: 8px 0;
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                    }
+                    .protocol-setup-modal .code-block code {
+                        font-family: monospace;
+                        font-size: 13px;
+                        flex: 1;
+                    }
+                    .protocol-setup-modal .text-muted {
+                        color: var(--text-tertiary);
+                        font-size: 12px;
+                    }
+                    .protocol-setup-modal hr {
+                        border: 0;
+                        border-top: 1px solid var(--border-light);
+                        margin: 20px 0;
+                    }
+                `;
+                document.head.appendChild(styles);
+            }
+        }
+        
+        function closeFolderPathModal() {
+            const modal = document.querySelector('.folder-path-modal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+
+        // 通知系统
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+            notification.innerHTML = `
+                <div class="notification-content">
+                    <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
+                    <span>${message}</span>
+                </div>
+                <button class="notification-close" onclick="this.parentElement.remove()">&times;</button>
+            `;
+            
+            // 添加通知样式（如果还没有）
+            if (!document.getElementById('notification-styles')) {
+                const styles = document.createElement('style');
+                styles.id = 'notification-styles';
+                styles.textContent = `
+                    .notification {
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        background: var(--bg-card);
+                        border-radius: var(--radius-md);
+                        box-shadow: var(--shadow-md);
+                        padding: 15px;
+                        z-index: 1000;
+                        max-width: 400px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        animation: slideIn 0.3s ease;
+                        border-left: 4px solid var(--primary-color);
+                    }
+                    .notification-success {
+                        border-left-color: var(--success-color);
+                    }
+                    .notification-error {
+                        border-left-color: var(--error-color);
+                    }
+                    .notification-content {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }
+                    .notification-content i {
+                        font-size: 16px;
+                    }
+                    .notification-success i {
+                        color: var(--success-color);
+                    }
+                    .notification-error i {
+                        color: var(--error-color);
+                    }
+                    .notification-close {
+                        background: none;
+                        border: none;
+                        font-size: 18px;
+                        cursor: pointer;
+                        color: var(--text-tertiary);
+                        margin-left: 10px;
+                    }
+                    @keyframes slideIn {
+                        from {
+                            transform: translateX(100%);
+                            opacity: 0;
+                        }
+                        to {
+                            transform: translateX(0);
+                            opacity: 1;
+                        }
+                    }
+                `;
+                document.head.appendChild(styles);
+            }
+            
+            document.body.appendChild(notification);
+            
+            // 自动移除通知
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+        
+        // 切换文件夹展开/收起
+        function toggleFolder(toggler) {
+            const listItem = toggler.closest('li');
+            const nestedList = listItem.querySelector('.nested');
+            
+            if (nestedList) {
+                const isExpanded = nestedList.style.display === 'block';
+                
+                if (isExpanded) {
+                    // 收起文件夹
+                    nestedList.style.display = 'none';
+                    toggler.textContent = '+';
+                } else {
+                    // 展开文件夹
+                    nestedList.style.display = 'block';
+                    toggler.textContent = '-';
+                }
+                
+                // 更新文件夹图标
+                const folderIcon = listItem.querySelector('.folder-icon');
+                if (folderIcon) {
+                    folderIcon.innerHTML = isExpanded ? '<i class="fas fa-folder"></i>' : '<i class="fas fa-folder-open"></i>';
+                }
+            }
+        }
+        
+        // 绑定文件树事件
+        function bindFileTreeEvents() {
+            // 为所有切换器绑定点击事件
+            document.querySelectorAll('.toggler').forEach(toggler => {
+                // 检查是否已经绑定过事件，避免重复绑定
+                if (!toggler.hasAttribute('data-event-bound')) {
+                    toggler.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleFolder(this);
+                    });
+                    // 标记已绑定事件
+                    toggler.setAttribute('data-event-bound', 'true');
+                }
+            });
+        }
+        
+        // 展开指定文件夹
+        function expandFolder(folderName) {
+            const listItems = document.querySelectorAll('.file-tree li');
+            listItems.forEach(item => {
+                const folderNameElement = item.querySelector('.folder-name');
+                if (folderNameElement && folderNameElement.textContent.includes(folderName)) {
+                    const toggler = item.querySelector('.toggler');
+                    const nestedList = item.querySelector('.nested');
+                    if (toggler && nestedList && nestedList.style.display !== 'block') {
+                        nestedList.style.display = 'block';
+                        toggler.textContent = '-';
+                        
+                        // 更新文件夹图标
+                        const folderIcon = item.querySelector('.folder-icon');
+                        if (folderIcon) {
+                            folderIcon.innerHTML = '<i class="fas fa-folder-open"></i>';
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 默认展开特定文件夹
+        function expandDefaultFolders() {
+            // 展开"03_过程管理"文件夹
+            expandFolder('03_过程管理');
+            // 也可以展开其他重要文件夹
+            expandFolder('01_申报');
+            expandFolder('02_立项');
+        }
+        
+        // AJAX文件上传处理
+        function setupAjaxFileUpload() {
+            console.log('正在设置AJAX文件上传处理...');
+            const uploadForm = document.getElementById('upload-form');
+            console.log('找到上传表单:', uploadForm);
+            
+            if (uploadForm) {
+                console.log('为上传表单添加事件监听器');
+                uploadForm.addEventListener('submit', function(e) {
+                    console.log('上传表单提交事件被触发');
+                    e.preventDefault();
+                    
+                    // 检查是否选择了文件
+                    const fileInput = this.querySelector('input[type="file"]');
+                    console.log('文件输入:', fileInput);
+                    console.log('选择的文件:', fileInput ? fileInput.files : 'null');
+                    
+                    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+                        console.log('没有选择文件，显示错误提示');
+                        showNotification('请选择要上传的文件', 'error');
+                        return;
+                    }
+                    
+                    console.log('开始文件上传，文件数量:', fileInput.files.length);
+                    console.log('上传目标路径:', this.querySelector('#target_path').value);
+                    console.log('表单action:', this.action);
+                    
+                    const formData = new FormData(this);
+                    const submitBtn = this.querySelector('button[type="submit"]');
+                    const originalText = submitBtn.innerHTML;
+                    
+                    // 显示上传状态
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 上传中...';
+                    submitBtn.disabled = true;
+                    
+                    // 显示开始上传的提示
+                    showNotification(`开始上传 ${fileInput.files.length} 个文件...`, 'info');
+                    
+                    fetch(this.action, {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                    .then(response => {
+                        console.log('服务器响应状态', response.status);
+                        console.log('响应头:', response.headers);
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP错误! 状态 ${response.status}`);
+                        }
+                        
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('服务端响应数据:', data);
+                        
+                        if (data.success) {
+                            showNotification(`成功：${data.message}`, 'success');
+                            // 重置表单
+                            this.reset();
+                            // 刷新文件树
+                            setTimeout(() => {
+                                refreshFileTree();
+                            }, 500);
+                        } else {
+                            showNotification(`失败：${data.message}`, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('上传错误详情:', error);
+                        showNotification(`文件上传失败: ${error.message}`, 'error');
+                    })
+                    .finally(() => {
+                        // 恢复按钮状态
+                        submitBtn.innerHTML = originalText;
+                        submitBtn.disabled = false;
+                    });
+                });
+            } else {
+                console.error('未找到上传表单元素');
+            }
+            
+            // 创建文件夹表单AJAX处理
+            const createFolderForm = document.getElementById('create-folder-form');
+            if (createFolderForm) {
+                createFolderForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const formData = new FormData(this);
+                    const submitBtn = this.querySelector('button[type="submit"]');
+                    const originalText = submitBtn.innerHTML;
+                    
+                    // 显示创建状态
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 创建中...';
+                    submitBtn.disabled = true;
+                    
+                    fetch(this.action, {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showNotification(data.message, 'success');
+                            // 重置表单
+                            this.reset();
+                            // 刷新文件树
+                            setTimeout(() => {
+                                refreshFileTree();
+                            }, 500);
+                        } else {
+                            showNotification(data.message, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('创建错误:', error);
+                        showNotification('文件夹创建失败，请重试', 'error');
+                    })
+                    .finally(() => {
+                        // 恢复按钮状态
+                        submitBtn.innerHTML = originalText;
+                        submitBtn.disabled = false;
+                    });
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // 页面加载时立即清理任何残留的模框元素
+            forceCleanAllModals();
+            
+            // 页面卸载时清理
+            window.addEventListener('beforeunload', forceCleanAllModals);
+            window.addEventListener('unload', forceCleanAllModals);
+            
+            const hash = window.location.hash.substring(1);
+            if (hash) {
+                const link = document.querySelector(`.nav-link[href*="#${hash}"]`);
+                if (link) link.click();
+            }
+
+            // 初始化文件树事件
+            bindFileTreeEvents();
+            
+            // 默认展开特定文件夹
+            setTimeout(() => {
+                expandDefaultFolders();
+            }, 100);
+            
+            // 设置AJAX文件上传
+            setupAjaxFileUpload();
+            
+            // 更新文件计数
+            const fileTreeItems = document.querySelectorAll('.file-tree li');
+            const fileCountElement = document.getElementById('file-count');
+            if (fileCountElement && fileTreeItems.length > 0) {
+                const fileCount = document.querySelectorAll('.file-tree .file-name').length;
+                const folderCount = document.querySelectorAll('.file-tree .folder-name').length;
+                fileCountElement.textContent = `${fileCount} 个文件 ${folderCount} 个文件夹`;
+            } else if (fileCountElement) {
+                fileCountElement.textContent = '暂无文件';
+            }
+        });
+        
+        // 全局模框实例
+        let currentModal = null;
+        
+        // 强制清理所有模态框相关元素的全局函数
+        function forceCleanAllModals() {
+            // 清理扢有可能的模框背景
+            document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+            document.querySelectorAll('.modal-backdrop.fade').forEach(el => el.remove());
+            document.querySelectorAll('.modal-backdrop.show').forEach(el => el.remove());
+            document.querySelectorAll('.modal-backdrop.fade.show').forEach(el => el.remove());
+            
+            // 重置 body 样式
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+            document.body.style.marginRight = '';
+            
+            // 重置所有模态框状态
+            document.querySelectorAll('.modal').forEach(modal => {
+                modal.style.display = 'none';
+                modal.classList.remove('show');
+                modal.setAttribute('aria-hidden', 'true');
+                modal.removeAttribute('aria-modal');
+            });
+            
+            // 清理全局变量
+            currentModal = null;
+        }
+        
+        // 编辑指标项目函数
+        function editMetricsItem(itemId, currentValue, status, notes) {
+            // 先强制清理任何残留的模框元素
+            forceCleanAllModals();
+            
+            document.getElementById('editItemId').value = itemId;
+            document.getElementById('editCurrentValue').value = currentValue;
+            document.getElementById('editStatus').value = status;
+            document.getElementById('editNotes').value = notes;
+            
+            // 显示模框并处理可访问性
+            currentModal = new bootstrap.Modal(document.getElementById('editMetricsModal'), {
+                backdrop: 'static',
+                keyboard: false
+            });
+            currentModal.show();
+            
+            // 监听模框事件以正确处理 aria-hidden
+            const modalElement = document.getElementById('editMetricsModal');
+            modalElement.addEventListener('shown.bs.modal', function () {
+                // 模框显示时移除 aria-hidden
+                this.removeAttribute('aria-hidden');
+            });
+            
+            modalElement.addEventListener('hidden.bs.modal', function () {
+                // 模框隐藏时恢复 aria-hidden
+                this.setAttribute('aria-hidden', 'true');
+                // 清理全局变量
+                currentModal = null;
+                // 强制清理所有模态框背景和样式
+                setTimeout(() => {
+                    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+                    document.querySelectorAll('.modal-backdrop.fade').forEach(el => el.remove());
+                    document.querySelectorAll('.modal-backdrop.show').forEach(el => el.remove());
+                    document.querySelectorAll('.modal-backdrop.fade.show').forEach(el => el.remove());
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                    document.body.style.marginRight = '';
+                }, 50);
+            });
+        }
+        
+        // 提交指标项目更新
+        function submitMetricsUpdate() {
+            const itemId = document.getElementById('editItemId').value;
+            const currentValue = document.getElementById('editCurrentValue').value;
+            const status = document.getElementById('editStatus').value;
+            const notes = document.getElementById('editNotes').value;
+            
+            const formData = new FormData();
+            formData.append('current_value', currentValue);
+            formData.append('status', status);
+            formData.append('notes', notes);
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            
+            fetch(`/project/{{ project.project_id }}/metrics-item/${itemId}/update/`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    // 立即强制清理扢有模态框相关元素
+                    forceCleanAllModals();
+                    
+                    // 显示成功消息
+                    alert('更新成功');
+                    
+                    // 短暂延迟后重新加载页面
+                    setTimeout(() => {
+                        location.reload();
+                    }, 500);
+                } else {
+                    alert('更新失败，请重试');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('更新失败，请重试');
+            });
+        }
+    </script>
+    
+    <!-- 编辑指标项目模框 -->
+    <div class="modal fade" id="editMetricsModal" tabindex="-1" aria-labelledby="editMetricsModalLabel" aria-hidden="true" style="display: none;">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editMetricsModalLabel">
+                        <i class="fas fa-edit"></i>
+                        编辑指标项目
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editItemId">
+                    <div class="mb-3">
+                        <label for="editCurrentValue" class="form-label">当前值</label>
+                        <input type="text" class="form-control" id="editCurrentValue" placeholder="请输入当前值">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editStatus" class="form-label">完成状态</label>
+                        <select class="form-select" id="editStatus">
+                            <option value="pending">待开始</option>
+                            <option value="in_progress">进行中</option>
+                            <option value="completed">已完成</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editNotes" class="form-label">备注</label>
+                        <textarea class="form-control" id="editNotes" rows="3" placeholder="请输入备注信息"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times"></i>
+                        取消
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="submitMetricsUpdate()">
+                        <i class="fas fa-save"></i>
+                        保存更改
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Bootstrap JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+

@@ -3,3 +3,5 @@ openpyxl==3.1.2
 pandas==2.2.2
 cryptography==41.0.3
 requests==2.31.0
+waitress==3.0.0
+whitenoise==6.6.0

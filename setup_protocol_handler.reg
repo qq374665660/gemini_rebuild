@@ -1,0 +1,12 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\cscec-pm]
+@="URL:CSCEC Project-Manager Protocol"
+"URL Protocol"=""
+
+[HKEY_CLASSES_ROOT\cscec-pm\shell]
+
+[HKEY_CLASSES_ROOT\cscec-pm\shell\open]
+
+[HKEY_CLASSES_ROOT\cscec-pm\shell\open\command]
+@="\"D:\\gemini_rebuild\\register_url_protocol.bat\" \"%1\""

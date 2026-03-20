@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>文件上传测试</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>文件上传测试</h1>
+    <form id="upload-form" method="post" enctype="multipart/form-data" action="/project/TEST001/file/upload/">
+        {% csrf_token %}
+        <input type="hidden" name="target_path" value="projects\2024-在研-TEST001-测试项目\01_申报">
+        <div>
+            <label for="files">选择文件:</label>
+            <input type="file" name="files" id="files" multiple>
+        </div>
+        <div style="margin-top: 10px;">
+            <button type="submit">上传文件</button>
+        </div>
+    </form>
+    
+    <script>
+    document.getElementById('upload-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const fileInput = document.getElementById('files');
+        
+        if (fileInput.files.length === 0) {
+            alert('请选择要上传的文件');
+            return;
+        }
+        
+        console.log('开始上传文件:', fileInput.files.length);
+        
+        fetch(this.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('上传结果:', data);
+            if (data.success) {
+                alert('上传成功: ' + data.message);
+            } else {
+                alert('上传失败: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('上传错误:', error);
+            alert('上传过程中发生错误');
+        });
+    });
+    </script>
+</body>
+</html>

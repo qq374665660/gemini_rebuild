@@ -1,0 +1,17 @@
+Windows Registry Editor Version 5.00
+
+; ========================================
+; 内网客户端协议注册表
+; 使用前请先将 client_protocol_handler.bat 复制到 C:\cscec-pm\ 目录
+; ========================================
+
+[HKEY_CLASSES_ROOT\cscec-pm]
+@="URL:CSCEC Project-Manager Protocol"
+"URL Protocol"=""
+
+[HKEY_CLASSES_ROOT\cscec-pm\shell]
+
+[HKEY_CLASSES_ROOT\cscec-pm\shell\open]
+
+[HKEY_CLASSES_ROOT\cscec-pm\shell\open\command]
+@="\"C:\\cscec-pm\\client_protocol_handler.bat\" \"%1\""

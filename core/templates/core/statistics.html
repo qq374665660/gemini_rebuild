@@ -1,0 +1,1460 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>课题统计分析 - 课题管理系统</title>
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/components.css' %}?v=2.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* 产出指标相关样式 */
+        .metrics-completion-table {
+            margin-top: 1rem;
+        }
+        
+        .metrics-completion-table .table {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .metrics-completion-table .table th {
+            background-color: var(--bg-tertiary);
+            font-weight: 600;
+            color: var(--text-secondary);
+            border-bottom: 2px solid var(--border-light);
+            padding: 12px;
+        }
+        
+        .metrics-completion-table .table td {
+            padding: 12px;
+            vertical-align: middle;
+        }
+        
+        .progress-bar-container {
+            position: relative;
+            background-color: var(--bg-tertiary);
+            border-radius: var(--radius-sm);
+            height: 24px;
+            min-width: 120px;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background-color: var(--primary-color);
+            border-radius: var(--radius-sm);
+            transition: width 0.3s ease;
+            position: relative;
+        }
+        
+        .progress-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            z-index: 1;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
+        
+        .text-muted {
+            color: var(--text-tertiary);
+        }
+
+        .filter-form {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-md);
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--spacing-md);
+            align-items: end;
+        }
+
+        .filter-span-2 {
+            grid-column: span 2;
+        }
+
+        .filter-multi {
+            min-height: 120px;
+        }
+
+        .filter-search {
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .filter-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+
+        .filter-note {
+            color: var(--text-tertiary);
+            font-size: var(--font-size-sm);
+        }
+
+        .filter-applied {
+            color: var(--primary-color);
+            font-weight: 600;
+            font-size: var(--font-size-sm);
+        }
+
+        .form-hint {
+            color: var(--text-tertiary);
+            font-size: var(--font-size-xs);
+            margin-top: 4px;
+        }
+
+        @media (max-width: 900px) {
+            .filter-span-2 {
+                grid-column: span 1;
+            }
+        }
+    
+        .filter-panel {
+            position: relative;
+            padding: 20px;
+            border-radius: 18px;
+            border: 1px solid var(--border-light);
+            background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+            overflow: hidden;
+        }
+
+        .filter-panel::before {
+            content: '';
+            position: absolute;
+            right: -120px;
+            top: -120px;
+            width: 240px;
+            height: 240px;
+            background: radial-gradient(circle, rgba(37, 99, 235, 0.15), transparent 65%);
+            pointer-events: none;
+        }
+
+        .filter-panel-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .filter-panel-title {
+            font-family: var(--font-family-display);
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .filter-panel-subtitle {
+            color: var(--text-secondary);
+            font-size: var(--font-size-sm);
+            margin-top: 4px;
+        }
+
+        .filter-panel-actions {
+            display: flex;
+            align-items: center;
+        }
+
+        .filter-tip {
+            padding: 6px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--border-light);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-size: var(--font-size-xs);
+        }
+
+        .active-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px dashed var(--primary-light);
+            background: var(--primary-lighter);
+            margin-bottom: 12px;
+        }
+
+        .active-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: var(--font-size-xs);
+            font-weight: 600;
+            color: var(--primary-dark);
+        }
+
+        .filter-chip {
+            background: #ffffff;
+            border: 1px solid var(--border-light);
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: var(--font-size-xs);
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .filter-form {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-md);
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: var(--spacing-md);
+            align-items: end;
+        }
+
+        .filter-span-2 {
+            grid-column: span 2;
+        }
+
+        .filter-multi {
+            min-height: 140px;
+            padding: 8px;
+            border-radius: 12px;
+            border: 1px solid var(--border-light);
+            background: var(--bg-primary);
+        }
+
+        .filter-search {
+            margin-bottom: var(--spacing-xs);
+            border-radius: 10px;
+        }
+
+        .range-group .range-fields {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .range-sep {
+            color: var(--text-tertiary);
+            font-weight: 600;
+        }
+
+        .filter-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding-top: 12px;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .filter-note {
+            color: var(--text-tertiary);
+            font-size: var(--font-size-sm);
+        }
+
+        .form-hint {
+            color: var(--text-tertiary);
+            font-size: var(--font-size-xs);
+            margin-top: 4px;
+        }
+
+        .filter-panel .form-control:focus,
+        .filter-panel select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+        }
+
+        @media (max-width: 900px) {
+            .filter-span-2 {
+                grid-column: span 1;
+            }
+
+            .filter-panel-head {
+                flex-direction: column;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .filter-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-actions .btn {
+                width: 100%;
+            }
+        }
+
+        .filter-panel {
+            position: relative;
+            padding: 20px;
+            border-radius: 18px;
+            border: 1px solid var(--border-light);
+            background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+            overflow: hidden;
+        }
+
+        .filter-panel::before {
+            content: '';
+            position: absolute;
+            right: -120px;
+            top: -120px;
+            width: 240px;
+            height: 240px;
+            background: radial-gradient(circle, rgba(37, 99, 235, 0.15), transparent 65%);
+            pointer-events: none;
+        }
+
+        .filter-panel-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .filter-panel-title {
+            font-family: var(--font-family-display);
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .filter-panel-subtitle {
+            color: var(--text-secondary);
+            font-size: var(--font-size-sm);
+            margin-top: 4px;
+        }
+
+        .filter-panel-actions {
+            display: flex;
+            align-items: center;
+        }
+
+        .filter-tip {
+            padding: 6px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--border-light);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-size: var(--font-size-xs);
+        }
+
+        .active-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px dashed var(--primary-light);
+            background: var(--primary-lighter);
+            margin-bottom: 12px;
+        }
+
+        .active-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: var(--font-size-xs);
+            font-weight: 600;
+            color: var(--primary-dark);
+        }
+
+        .filter-chip {
+            background: #ffffff;
+            border: 1px solid var(--border-light);
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: var(--font-size-xs);
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .filter-form {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-md);
+        }
+
+        .filter-section {
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid var(--border-light);
+            background: var(--bg-primary);
+            box-shadow: 0 6px 14px rgba(15, 23, 42, 0.05);
+        }
+
+        .filter-section-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: var(--font-size-sm);
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+
+        .filter-grid {
+            display: grid;
+            gap: var(--spacing-md);
+            align-items: end;
+        }
+
+        .filter-grid-3 {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .filter-grid-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .filter-span-2 {
+            grid-column: span 2;
+        }
+
+        .filter-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-multi {
+            min-height: 160px;
+            padding: 8px;
+            border-radius: 12px;
+            border: 1px solid var(--border-light);
+            background: var(--bg-primary);
+        }
+
+        .filter-search {
+            border-radius: 10px;
+        }
+
+        .range-grid .form-group {
+            min-width: 0;
+        }
+
+        .range-fields {
+            display: flex;
+            gap: 8px;
+        }
+
+        .range-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .range-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 8px;
+            border-radius: 8px;
+            font-size: var(--font-size-xs);
+            background: var(--bg-tertiary);
+            color: var(--text-tertiary);
+            white-space: nowrap;
+        }
+
+        .filter-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding-top: 12px;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .filter-note {
+            color: var(--text-tertiary);
+            font-size: var(--font-size-sm);
+        }
+
+        .form-hint {
+            color: var(--text-tertiary);
+            font-size: var(--font-size-xs);
+            margin-top: 4px;
+        }
+
+        .filter-panel .form-control:focus,
+        .filter-panel select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+        }
+
+        @media (max-width: 1024px) {
+            .filter-grid-3 {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .filter-span-2 {
+                grid-column: span 2;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .filter-grid-3,
+            .filter-grid-2 {
+                grid-template-columns: 1fr;
+            }
+
+            .filter-span-2 {
+                grid-column: span 1;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .filter-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-actions .btn {
+                width: 100%;
+            }
+        }
+</style>
+</head>
+<body>
+    <div class="app-layout">
+        <!-- 顶部导航栏 -->
+        {% include 'core/partials/navbar.html' %}
+
+        <!-- 主要内容区域 -->
+        <main class="app-main">
+            <div class="app-content">
+                <!-- 页面头部 -->
+                <div class="page-header">
+                    <div class="container">
+
+
+            <!-- Filter Section -->
+            <div class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-filter"></i> 筛选分析</h2>
+                    <p>像 Excel 一样多选筛选，支持范围与日期过滤</p>
+                </div>
+                <div class="content-section-body">
+                    <div class="filter-panel">
+                    <div class="filter-panel-head">
+                        <div>
+                            <div class="filter-panel-title">Excel 式筛选</div>
+                            <div class="filter-panel-subtitle">筛选范围会同步影响下方图表与统计卡片</div>
+                        </div>
+                        <div class="filter-panel-actions">
+                            <span class="filter-tip">多选请按住 Ctrl/Shift</span>
+                        </div>
+                    </div>
+                    {% if filters_applied %}
+                        <div class="active-filters">
+                            <span class="active-label"><i class="fas fa-filter"></i> 已应用</span>
+                            {% if query %}<span class="filter-chip">关键词: {{ query }}</span>{% endif %}
+                            {% for y in selected_years %}<span class="filter-chip">年份: {{ y }}</span>{% endfor %}
+                            {% for s in selected_statuses %}<span class="filter-chip">状态: {{ s }}</span>{% endfor %}
+                            {% for lvl in selected_levels %}<span class="filter-chip">级别: {{ lvl }}</span>{% endfor %}
+                            {% for own in selected_ownerships %}<span class="filter-chip">归属: {{ own }}</span>{% endfor %}
+                            {% for t in selected_types %}<span class="filter-chip">类型: {{ t }}</span>{% endfor %}
+                            {% for r in selected_roles %}<span class="filter-chip">角色: {{ r }}</span>{% endfor %}
+                            {% for unit in selected_units %}<span class="filter-chip">单位: {{ unit }}</span>{% endfor %}
+                            {% for lead in selected_leads %}<span class="filter-chip">负责人: {{ lead }}</span>{% endfor %}
+                            {% if min_budget %}<span class="filter-chip">预算≥{{ min_budget }}</span>{% endif %}
+                            {% if max_budget %}<span class="filter-chip">预算≤{{ max_budget }}</span>{% endif %}
+                            {% if start_date_from %}<span class="filter-chip">开始≥{{ start_date_from }}</span>{% endif %}
+                            {% if start_date_to %}<span class="filter-chip">开始≤{{ start_date_to }}</span>{% endif %}
+                            {% if end_date_from %}<span class="filter-chip">结束≥{{ end_date_from }}</span>{% endif %}
+                            {% if end_date_to %}<span class="filter-chip">结束≤{{ end_date_to }}</span>{% endif %}
+                        </div>
+                    {% endif %}
+                    <form method="get" class="filter-form">
+                        <div class="filter-section">
+                            <div class="filter-section-title">
+                                <i class="fas fa-sliders"></i>
+                                关键词与基础条件
+                            </div>
+                            <div class="filter-grid filter-grid-3">
+                                <div class="form-group filter-span-2">
+                                    <label class="form-label">搜索关键词</label>
+                                    <input type="text" name="q" class="form-control" placeholder="课题名称、负责人、单位、内容..." value="{{ query|default:'' }}">
+                                    <div class="form-hint">可用空格/逗号分词，系统按“全部包含”筛选</div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">年份（多选）</label>
+                                    <select name="year" class="form-control filter-multi" multiple size="5">
+                                        {% for y in distinct_years %}
+                                            <option value="{{ y }}" {% if y|stringformat:"s" in selected_years %}selected{% endif %}>{{ y }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">状态（多选）</label>
+                                    <select name="status" class="form-control filter-multi" multiple size="5">
+                                        {% for s in distinct_statuses %}
+                                            <option value="{{ s }}" {% if s in selected_statuses %}selected{% endif %}>{{ s }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">级别（多选）</label>
+                                    <select name="level" class="form-control filter-multi" multiple size="4">
+                                        {% for lvl in distinct_levels %}
+                                            <option value="{{ lvl }}" {% if lvl in selected_levels %}selected{% endif %}>{{ lvl }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="filter-section">
+                            <div class="filter-section-title">
+                                <i class="fas fa-layer-group"></i>
+                                分类与角色
+                            </div>
+                            <div class="filter-grid filter-grid-3">
+                                <div class="form-group">
+                                    <label class="form-label">归属（多选）</label>
+                                    <select name="ownership" class="form-control filter-multi" multiple size="4">
+                                        {% for own in distinct_ownerships %}
+                                            <option value="{{ own }}" {% if own in selected_ownerships %}selected{% endif %}>{{ own }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">类型（多选）</label>
+                                    <select name="project_type" class="form-control filter-multi" multiple size="4">
+                                        {% for t in distinct_types %}
+                                            <option value="{{ t }}" {% if t in selected_types %}selected{% endif %}>{{ t }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">角色（多选）</label>
+                                    <select name="role" class="form-control filter-multi" multiple size="4">
+                                        {% for r in distinct_roles %}
+                                            <option value="{{ r }}" {% if r in selected_roles %}selected{% endif %}>{{ r }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="filter-section">
+                            <div class="filter-section-title">
+                                <i class="fas fa-users"></i>
+                                负责人 / 单位
+                            </div>
+                            <div class="filter-grid filter-grid-2">
+                                <div class="form-group filter-stack">
+                                    <label class="form-label">归口单位（多选）</label>
+                                    <input type="text" class="form-control filter-search" data-filter-search="stats-unit" placeholder="筛选选项...">
+                                    <select id="stats-unit" name="managing_unit" class="form-control filter-multi" multiple size="6">
+                                        {% for unit in distinct_units %}
+                                            <option value="{{ unit }}" {% if unit in selected_units %}selected{% endif %}>{{ unit }}</option>
+                                        {% endfor %}
+                                        <option value="__blank__" {% if '__blank__' in selected_units %}selected{% endif %}>（空值）</option>
+                                    </select>
+                                </div>
+                                <div class="form-group filter-stack">
+                                    <label class="form-label">负责人（多选）</label>
+                                    <input type="text" class="form-control filter-search" data-filter-search="stats-lead" placeholder="筛选选项...">
+                                    <select id="stats-lead" name="project_lead" class="form-control filter-multi" multiple size="6">
+                                        {% for lead in distinct_leads %}
+                                            <option value="{{ lead }}" {% if lead in selected_leads %}selected{% endif %}>{{ lead }}</option>
+                                        {% endfor %}
+                                        <option value="__blank__" {% if '__blank__' in selected_leads %}selected{% endif %}>（空值）</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="filter-section">
+                            <div class="filter-section-title">
+                                <i class="fas fa-chart-line"></i>
+                                范围条件
+                            </div>
+                            <div class="filter-grid filter-grid-3 range-grid">
+                                <div class="form-group range-group">
+                                    <label class="form-label">预算范围（万元）</label>
+                                    <div class="range-fields">
+                                        <div class="range-item">
+                                            <span class="range-tag">下限</span>
+                                            <input type="number" step="0.01" name="min_budget" class="form-control" value="{{ min_budget }}" placeholder="0">
+                                        </div>
+                                        <div class="range-item">
+                                            <span class="range-tag">上限</span>
+                                            <input type="number" step="0.01" name="max_budget" class="form-control" value="{{ max_budget }}" placeholder="999">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-group range-group">
+                                    <label class="form-label">开始日期范围</label>
+                                    <div class="range-fields">
+                                        <div class="range-item">
+                                            <span class="range-tag">从</span>
+                                            <input type="date" name="start_date_from" class="form-control" value="{{ start_date_from }}">
+                                        </div>
+                                        <div class="range-item">
+                                            <span class="range-tag">至</span>
+                                            <input type="date" name="start_date_to" class="form-control" value="{{ start_date_to }}">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-group range-group">
+                                    <label class="form-label">计划结束范围</label>
+                                    <div class="range-fields">
+                                        <div class="range-item">
+                                            <span class="range-tag">从</span>
+                                            <input type="date" name="end_date_from" class="form-control" value="{{ end_date_from }}">
+                                        </div>
+                                        <div class="range-item">
+                                            <span class="range-tag">至</span>
+                                            <input type="date" name="end_date_to" class="form-control" value="{{ end_date_to }}">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="filter-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search"></i>
+                                应用筛选
+                            </button>
+                            <a href="{% url 'statistics' %}" class="btn btn-secondary">
+                                <i class="fas fa-undo"></i>
+                                清空筛选
+                            </a>
+                            <span class="filter-note">空选 = 不限制</span>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="stats-grid">
+                <div class="stats-card primary">
+                    <div class="stats-icon">
+                        <i class="fas fa-project-diagram"></i>
+                    </div>
+                    <div class="stats-content">
+                        <div class="stats-number">{{ total_projects }}</div>
+                        <div class="stats-label">总课题数</div>
+                    </div>
+                </div>
+                <div class="stats-card success">
+                    <div class="stats-icon">
+                        <i class="fas fa-play-circle"></i>
+                    </div>
+                    <div class="stats-content">
+                        <div class="stats-number">{{ ongoing_projects }}</div>
+                        <div class="stats-label">进行中课题</div>
+                    </div>
+                </div>
+                <div class="stats-card info">
+                    <div class="stats-icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stats-content">
+                        <div class="stats-number">{{ completed_projects }}</div>
+                        <div class="stats-label">已完成课题</div>
+                    </div>
+                </div>
+                <div class="stats-card warning">
+                    <div class="stats-icon">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <div class="stats-content">
+                        <div class="stats-number">{{ budget_stats.total_budget_sum|floatformat:0|default:"0" }}</div>
+                        <div class="stats-label">总预算 (万元)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Budget Statistics -->
+            <div class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-money-bill-wave"></i> 经费统计概览</h2>
+                    <p>详细的预算分配和使用情况</p>
+                </div>
+                <div class="budget-overview-grid">
+                    <div class="budget-card total">
+                        <div class="budget-icon">
+                            <i class="fas fa-wallet"></i>
+                        </div>
+                        <div class="budget-info">
+                            <div class="budget-amount">{{ budget_stats.total_budget_sum|floatformat:0|default:"0" }}</div>
+                            <div class="budget-label">总预算 (万元)</div>
+                        </div>
+                    </div>
+                    <div class="budget-card external">
+                        <div class="budget-icon">
+                            <i class="fas fa-university"></i>
+                        </div>
+                        <div class="budget-info">
+                            <div class="budget-amount">{{ budget_stats.external_funding_sum|floatformat:0|default:"0" }}</div>
+                            <div class="budget-label">外部专项经费 (万元)</div>
+                        </div>
+                    </div>
+                    <div class="budget-card institute">
+                        <div class="budget-icon">
+                            <i class="fas fa-building"></i>
+                        </div>
+                        <div class="budget-info">
+                            <div class="budget-amount">{{ budget_stats.institute_funding_sum|floatformat:0|default:"0" }}</div>
+                            <div class="budget-label">院自筹经费 (万元)</div>
+                        </div>
+                    </div>
+                    <div class="budget-card unit">
+                        <div class="budget-icon">
+                            <i class="fas fa-home"></i>
+                        </div>
+                        <div class="budget-info">
+                            <div class="budget-amount">{{ budget_stats.unit_funding_sum|floatformat:0|default:"0" }}</div>
+                            <div class="budget-label">单位自筹经费 (万元)</div>
+                        </div>
+                    </div>
+                    <div class="budget-card average">
+                        <div class="budget-icon">
+                            <i class="fas fa-calculator"></i>
+                        </div>
+                        <div class="budget-info">
+                            <div class="budget-amount">{{ budget_stats.avg_total_budget|floatformat:1|default:"0" }}</div>
+                            <div class="budget-label">平均预算 (万元)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Basic Distribution Charts -->
+            <div class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-pie"></i> 分布统计图表</h2>
+                    <p>课题在各个维度的分布情况</p>
+                </div>
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-tasks"></i> 按课题状态统计</h3>
+                        </div>
+                        <div class="chart-content">
+                            <canvas id="statusChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-layer-group"></i> 按课题级别统计</h3>
+                        </div>
+                        <div class="chart-content">
+                            <canvas id="levelChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-sitemap"></i> 按课题归属统计</h3>
+                        </div>
+                        <div class="chart-content">
+                            <canvas id="ownershipChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-tags"></i> 按课题类型统计</h3>
+                        </div>
+                        <div class="chart-content">
+                            <canvas id="typeChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-users"></i> 按参与角色统计</h3>
+                        </div>
+                        <div class="chart-content">
+                            <canvas id="roleChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-calendar-alt"></i> 按开始年份统计</h3>
+                        </div>
+                        <div class="chart-content">
+                            <canvas id="yearlyChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Budget Analysis Charts -->
+            <div class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-line"></i> 预算分析图表</h2>
+                    <p>预算在不同维度的分析和趋势</p>
+                </div>
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-chart-line"></i> 按年度预算统计</h3>
+                        </div>
+                        <div class="chart-content">
+                            <canvas id="yearlyBudgetChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-chart-bar"></i> 按状态预算统计</h3>
+                        </div>
+                        <div class="chart-content">
+                            <canvas id="statusBudgetChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-chart-bar"></i> 按级别预算统计</h3>
+                        </div>
+                        <div class="chart-content">
+                            <canvas id="levelBudgetChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Output Metrics Analysis -->            
+            <div class="content-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-trophy"></i> 产出指标统计分析</h2>
+                    <p>课题产出指标的分布和完成情况分析</p>
+                </div>
+                
+                <!-- Metrics Summary Cards -->
+                <div class="stats-grid">
+                    <div class="stats-card primary">
+                        <div class="stats-icon">
+                            <i class="fas fa-tasks"></i>
+                        </div>
+                        <div class="stats-content">
+                            <div class="stats-number">{{ total_metrics }}</div>
+                            <div class="stats-label">总指标数</div>
+                        </div>
+                    </div>
+                    <div class="stats-card success">
+                        <div class="stats-icon">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stats-content">
+                            <div class="stats-number">{{ completed_metrics }}</div>
+                            <div class="stats-label">已完成指标</div>
+                        </div>
+                    </div>
+                    <div class="stats-card info">
+                        <div class="stats-icon">
+                            <i class="fas fa-play-circle"></i>
+                        </div>
+                        <div class="stats-content">
+                            <div class="stats-number">{{ in_progress_metrics }}</div>
+                            <div class="stats-label">进行中指标</div>
+                        </div>
+                    </div>
+                    <div class="stats-card warning">
+                        <div class="stats-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stats-content">
+                            <div class="stats-number">{{ pending_metrics }}</div>
+                            <div class="stats-label">待完成指标</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Metrics Charts -->
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-chart-pie"></i> 按指标分类统计</h3>
+                        </div>
+                        <div class="chart-content">
+                            <canvas id="metricsCategoryChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-chart-donut"></i> 按完成状态统计</h3>
+                        </div>
+                        <div class="chart-content">
+                            <canvas id="metricsStatusChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-chart-bar"></i> 各分类完成率统计</h3>
+                        </div>
+                        <div class="chart-content">
+                            <canvas id="metricsCompletionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Metrics Completion Details -->
+                <div class="content-section">
+                    <div class="section-header">
+                        <h3><i class="fas fa-list-check"></i> 各分类完成情况详情</h3>
+                    </div>
+                    <div class="metrics-completion-table">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>指标分类</th>
+                                    <th>总数</th>
+                                    <th>已完成</th>
+                                    <th>完成率</th>
+                                    <th>进度条</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in metrics_completion_by_category %}
+                                <tr>
+                                    <td><strong>{{ item.category }}</strong></td>
+                                    <td>{{ item.total }}</td>
+                                    <td>{{ item.completed }}</td>
+                                    <td>{{ item.completion_rate|floatformat:1 }}%</td>
+                                    <td>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar" style="width: {{ item.completion_rate }}%"></div>
+                                            <span class="progress-text">{{ item.completion_rate|floatformat:1 }}%</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">暂无产出指标数据</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const statusData = {{ status_data|safe }};
+        const levelData = {{ level_data|safe }};
+        const yearlyData = {{ yearly_data|safe }};
+        const ownershipData = {{ ownership_data|safe }};
+        const typeData = {{ type_data|safe }};
+        const roleData = {{ role_data|safe }};
+        const yearlyBudgetData = {{ yearly_budget_data|safe }};
+        const statusBudgetData = {{ status_budget_data|safe }};
+        const levelBudgetData = {{ level_budget_data|safe }};
+        // Output metrics data
+        const metricsCategoryData = {{ metrics_category_data|safe }};
+        const metricsStatusData = {{ metrics_status_data|safe }};
+        const metricsCompletionData = {{ metrics_completion_data|safe }};
+
+        const distinctPalette = [
+            '#2563eb', '#1d4ed8', '#0ea5e9', '#14b8a6', '#22c55e', '#f59e0b',
+            '#f97316', '#ef4444', '#a855f7', '#6366f1', '#64748b', '#94a3b8'
+        ];
+        const bluePalette = ['#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#0ea5e9'];
+
+        // Chart.js global configuration
+        Chart.defaults.responsive = true;
+        Chart.defaults.maintainAspectRatio = false;
+        Chart.defaults.animation = {
+            duration: 0
+        };
+        Chart.defaults.interaction = {
+            intersect: false
+        };
+
+        // Basic Distribution Charts
+        new Chart(document.getElementById('statusChart'), {
+            type: 'pie',
+            data: {
+                labels: statusData.labels,
+                datasets: [{
+                    data: statusData.data,
+                    backgroundColor: distinctPalette,
+                    borderColor: '#ffffff',
+                    borderWidth: 2,
+                    hoverOffset: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    title: { display: true, text: '课题状态分布' }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('levelChart'), {
+            type: 'doughnut',
+            data: {
+                labels: levelData.labels,
+                datasets: [{
+                    data: levelData.data,
+                    backgroundColor: distinctPalette,
+                    borderColor: '#ffffff',
+                    borderWidth: 2,
+                    hoverOffset: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    title: { display: true, text: '课题级别分布' }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('ownershipChart'), {
+            type: 'pie',
+            data: {
+                labels: ownershipData.labels,
+                datasets: [{
+                    data: ownershipData.data,
+                    backgroundColor: distinctPalette,
+                    borderColor: '#ffffff',
+                    borderWidth: 2,
+                    hoverOffset: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    title: { display: true, text: '课题归属分布' }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('typeChart'), {
+            type: 'doughnut',
+            data: {
+                labels: typeData.labels,
+                datasets: [{
+                    data: typeData.data,
+                    backgroundColor: distinctPalette,
+                    borderColor: '#ffffff',
+                    borderWidth: 2,
+                    hoverOffset: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    title: { display: true, text: '课题类型分布' }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('roleChart'), {
+            type: 'pie',
+            data: {
+                labels: roleData.labels,
+                datasets: [{
+                    data: roleData.data,
+                    backgroundColor: distinctPalette,
+                    borderColor: '#ffffff',
+                    borderWidth: 2,
+                    hoverOffset: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    title: { display: true, text: '参与角色分布' }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('yearlyChart'), {
+            type: 'bar',
+            data: {
+                labels: yearlyData.labels,
+                datasets: [{
+                    label: '课题数量',
+                    data: yearlyData.data,
+                    backgroundColor: '#2563eb',
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { display: false },
+                    title: { display: true, text: '按年度课题数量统计' }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        // Budget Analysis Charts
+        new Chart(document.getElementById('yearlyBudgetChart'), {
+            type: 'line',
+            data: {
+                labels: yearlyBudgetData.labels,
+                datasets: [{
+                    label: '总预算 (万元)',
+                    data: yearlyBudgetData.data,
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.12)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    title: { display: true, text: '按年度预算统计' }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('statusBudgetChart'), {
+            type: 'bar',
+            data: {
+                labels: statusBudgetData.labels,
+                datasets: [{
+                    label: '总预算 (万元)',
+                    data: statusBudgetData.data,
+                    backgroundColor: bluePalette,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { display: false },
+                    title: { display: true, text: '按状态预算统计' }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('levelBudgetChart'), {
+            type: 'bar',
+            data: {
+                labels: levelBudgetData.labels,
+                datasets: [{
+                    label: '总预算 (万元)',
+                    data: levelBudgetData.data,
+                    backgroundColor: bluePalette,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { display: false },
+                    title: { display: true, text: '按级别预算统计' }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        // Output Metrics Charts
+        new Chart(document.getElementById('metricsCategoryChart'), {
+            type: 'pie',
+            data: {
+                labels: metricsCategoryData.labels,
+                datasets: [{
+                    data: metricsCategoryData.data,
+                    backgroundColor: distinctPalette,
+                    borderColor: '#ffffff',
+                    borderWidth: 2,
+                    hoverOffset: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    title: { display: true, text: '产出指标分类分布' }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('metricsStatusChart'), {
+            type: 'doughnut',
+            data: {
+                labels: metricsStatusData.labels,
+                datasets: [{
+                    data: metricsStatusData.data,
+                    backgroundColor: ['#2563eb', '#0ea5e9', '#14b8a6', '#f59e0b'],
+                    borderColor: '#ffffff',
+                    borderWidth: 2,
+                    hoverOffset: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    title: { display: true, text: '产出指标完成状态分布' }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('metricsCompletionChart'), {
+            type: 'bar',
+            data: {
+                labels: metricsCompletionData.labels,
+                datasets: [{
+                    label: '完成率 (%)',
+                    data: metricsCompletionData.completion_rates,
+                    backgroundColor: '#2563eb',
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { display: false },
+                    title: { display: true, text: '各分类指标完成率' }
+                },
+                scales: {
+                    y: { 
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Global search functionality
+        function setupGlobalSearch() {
+            const searchInput = document.getElementById('globalSearch');
+            if (searchInput) {
+                searchInput.addEventListener('input', function(e) {
+                    const query = e.target.value.toLowerCase();
+                    // This would typically connect to a backend search API
+                    console.log('Searching for:', query);
+                });
+            }
+        }
+
+        // Export data functionality
+        function exportData() {
+            // Create CSV data from the statistics
+            const csvData = [
+                ['统计项目', '数值'],
+                ['总课题数', '{{ total_projects }}'],
+                ['进行中课题', '{{ ongoing_projects }}'],
+                ['已完成课题', '{{ completed_projects }}'],
+                ['总预算(万元)', '{{ budget_stats.total_budget_sum|floatformat:0|default:"0" }}'],
+                ['外部专项经费(万元)', '{{ budget_stats.external_funding_sum|floatformat:0|default:"0" }}'],
+                ['院自筹经费(万元)', '{{ budget_stats.institute_funding_sum|floatformat:0|default:"0" }}'],
+                ['单位自筹经费(万元)', '{{ budget_stats.unit_funding_sum|floatformat:0|default:"0" }}'],
+                ['平均预算(万元)', '{{ budget_stats.avg_total_budget|floatformat:1|default:"0" }}'],
+                ['', ''],
+                ['产出指标统计', ''],
+                ['总指标数', '{{ total_metrics }}'],
+                ['已完成指标', '{{ completed_metrics }}'],
+                ['进行中指标', '{{ in_progress_metrics }}'],
+                ['待完成指标', '{{ pending_metrics }}']
+            ];
+            
+            const csvContent = csvData.map(row => row.join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', '课题统计数据.csv');
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        }
+
+        // Initialize additional functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            setupGlobalSearch();
+        });
+    
+        // Filter option search
+        function setupFilterOptionSearch() {
+            document.querySelectorAll('.filter-search').forEach(input => {
+                const targetId = input.dataset.filterSearch;
+                const select = document.getElementById(targetId);
+                if (!select) {
+                    return;
+                }
+                input.addEventListener('input', function() {
+                    const term = this.value.trim().toLowerCase();
+                    Array.from(select.options).forEach(option => {
+                        const text = option.text.toLowerCase();
+                        option.hidden = Boolean(term) && !text.includes(term);
+                    });
+                });
+            });
+        }
+        setupFilterOptionSearch();
+</script>
+</body>
+</html>

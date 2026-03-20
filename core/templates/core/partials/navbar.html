@@ -1,0 +1,71 @@
+{% with current=request.resolver_match.url_name %}
+<header class="app-header">
+    <nav class="navbar">
+        <div class="navbar-container">
+            <a href="{% url 'project_list' %}" class="navbar-brand">
+                <div class="navbar-brand-icon">
+                    <i class="fas fa-flask"></i>
+                </div>
+                科研课题管理系统
+            </a>
+
+            <div class="navbar-search">
+                <i class="fas fa-search navbar-search-icon"></i>
+                <input type="text" class="navbar-search-input" placeholder="搜索课题、负责人、单位、内容..." id="global-search">
+            </div>
+
+            <ul class="navbar-nav">
+                <li class="navbar-nav-item">
+                    <a href="{% url 'project_list' %}" class="navbar-nav-link{% if current == 'project_list' or current == 'project_detail' or current == 'create_project' or current == 'delete_project' %} active{% endif %}">
+                        <i class="fas fa-list"></i>
+                        课题列表
+                    </a>
+                </li>
+                <li class="navbar-nav-item">
+                    <a href="{% url 'statistics' %}" class="navbar-nav-link{% if current == 'statistics' %} active{% endif %}">
+                        <i class="fas fa-chart-bar"></i>
+                        统计分析
+                    </a>
+                </li>
+                <li class="navbar-nav-item">
+                    <a href="{% url 'progress_monitor' %}" class="navbar-nav-link{% if current == 'progress_monitor' %} active{% endif %}">
+                        <i class="fas fa-tasks"></i>
+                        进度监控
+                    </a>
+                </li>
+                <li class="navbar-nav-item">
+                    <a href="{% url 'expense_monitor' %}" class="navbar-nav-link{% if current == 'expense_monitor' or current == 'expense_import' or current == 'expense_mapping' %} active{% endif %}">
+                        <i class="fas fa-coins"></i>
+                        支出监控
+                    </a>
+                </li>
+                <li class="navbar-nav-item">
+                    <a href="{% url 'api_config' %}" class="navbar-nav-link{% if current == 'api_config' %} active{% endif %}">
+                        <i class="fas fa-cog"></i>
+                        API配置
+                    </a>
+                </li>
+                <li class="navbar-nav-item">
+                    <a href="{% url 'settings' %}" class="navbar-nav-link{% if current == 'settings' or current == 'init_system' %} active{% endif %}">
+                        <i class="fas fa-wrench"></i>
+                        系统设置
+                    </a>
+                </li>
+            </ul>
+
+            <div class="navbar-actions">
+                <button class="navbar-action-btn" title="通知" aria-label="通知">
+                    <i class="fas fa-bell"></i>
+                </button>
+                <div class="navbar-user">
+                    <button class="navbar-user-toggle" aria-label="用户菜单">
+                        <div class="navbar-user-avatar">管</div>
+                        <span>管理员</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+</header>
+{% endwith %}

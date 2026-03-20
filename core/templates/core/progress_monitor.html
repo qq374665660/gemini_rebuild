@@ -1,0 +1,252 @@
+﻿{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>课题进度监控 - 科研课题管理系统</title>
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/components.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/progress-monitor.css' %}?v=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-layout">
+        {% include 'core/partials/navbar.html' %}
+
+        <main class="app-main">
+            <div class="app-content">
+                <div class="page-header monitor-hero">
+                    <div class="container">
+                        <div class="page-header-content">
+                            <div>
+                                <h1 class="page-title">
+                                    <i class="fas fa-flag-checkered"></i>
+                                    课题进度监控
+                                </h1>
+                                <p class="page-subtitle">
+                                    统一判断中期节点与超期风险，截止日期 {{ today|date:"Y-m-d" }}
+                                </p>
+                            </div>
+                            <div class="page-actions">
+                                <a href="{% url 'project_list' %}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i>
+                                    返回课题列表
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="page-body">
+                    <div class="container">
+                        {% if messages %}
+                            {% for message in messages %}
+                                <div class="alert alert-{{ message.tags }}">
+                                    <i class="fas fa-{% if message.tags == 'success' %}check-circle{% elif message.tags == 'error' %}exclamation-circle{% else %}info-circle{% endif %}"></i>
+                                    {{ message }}
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-card-icon">
+                                    <i class="fas fa-layer-group"></i>
+                                </div>
+                                <div class="stat-card-value">{{ counts.total }}</div>
+                                <div class="stat-card-label">监控课题总数</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-card-icon">
+                                    <i class="fas fa-signal"></i>
+                                </div>
+                                <div class="stat-card-value">{{ counts.ontrack }}</div>
+                                <div class="stat-card-label">未到中期</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-card-icon">
+                                    <i class="fas fa-flag"></i>
+                                </div>
+                                <div class="stat-card-value">{{ counts.midterm }}</div>
+                                <div class="stat-card-label">已到中期</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-card-icon">
+                                    <i class="fas fa-triangle-exclamation"></i>
+                                </div>
+                                <div class="stat-card-value">{{ counts.overdue }}</div>
+                                <div class="stat-card-label">超期风险</div>
+                            </div>
+                        </div>
+
+                        <div class="monitor-rule-grid">
+                            <div class="content-section monitor-rule-card">
+                                <div class="content-section-header">
+                                    <h3 class="content-section-title">
+                                        <i class="fas fa-compass"></i>
+                                        节点判定规则
+                                    </h3>
+                                </div>
+                                <div class="content-section-body">
+                                    <ul class="monitor-rule-list">
+                                        <li>中期节点 = （开始日期 → 计划/延期结束日期）区间的 50% 时间点</li>
+                                        <li>已到中期：当前日期 ≥ 中期节点日期</li>
+                                        <li>超期：当前日期 > 计划/延期结束日期 且未结题</li>
+                                        <li>缺少日期：开始日期或结束日期为空</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="content-section monitor-filter-card">
+                                <div class="content-section-header">
+                                    <h3 class="content-section-title">
+                                        <i class="fas fa-filter"></i>
+                                        筛选查询
+                                    </h3>
+                                </div>
+                                <div class="content-section-body">
+                                    <form class="monitor-filter-form" method="get">
+                                        <div class="monitor-filter-row">
+                                            <div class="form-group">
+                                                <label for="q">关键词</label>
+                                                <input type="text" id="q" name="q" class="form-control" value="{{ query }}" placeholder="课题名称、编号、负责人...">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="year">开始年份</label>
+                                                <select id="year" name="year" class="form-control">
+                                                    <option value="">全部</option>
+                                                    {% for y in distinct_years %}
+                                                        <option value="{{ y }}" {% if y|stringformat:"s" == selected_year|stringformat:"s" %}selected{% endif %}>{{ y }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="status">课题状态</label>
+                                                <select id="status" name="status" class="form-control">
+                                                    <option value="">全部</option>
+                                                    {% for s in distinct_statuses %}
+                                                        <option value="{{ s }}" {% if s == selected_status %}selected{% endif %}>{{ s }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="progress_status">进度状态</label>
+                                                <select id="progress_status" name="progress_status" class="form-control">
+                                                    <option value="">全部</option>
+                                                    {% for option in progress_status_options %}
+                                                        <option value="{{ option.value }}" {% if option.value == selected_progress_status %}selected{% endif %}>{{ option.label }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="monitor-filter-actions">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fas fa-search"></i>
+                                                立即查询
+                                            </button>
+                                            <a href="{% url 'progress_monitor' %}" class="btn btn-text">
+                                                <i class="fas fa-rotate-left"></i>
+                                                清空筛选
+                                            </a>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="content-section monitor-list-section">
+                            <div class="content-section-header">
+                                <h3 class="content-section-title">
+                                    <i class="fas fa-layer-group"></i>
+                                    进度节点总览
+                                </h3>
+                            </div>
+                            <div class="content-section-body">
+                                <div class="monitor-list">
+                                    {% for row in monitor_rows %}
+                                        <article class="monitor-card status-{{ row.status_key }}">
+                                            <div class="monitor-card-main">
+                                                <div class="monitor-card-header">
+                                                    <div class="monitor-title">
+                                                        <span class="monitor-project-id">{{ row.project.project_id }}</span>
+                                                        <a href="{% url 'project_detail' row.project.project_id %}" class="monitor-project-name">
+                                                            {{ row.project.name }}
+                                                        </a>
+                                                    </div>
+                                                    <div class="monitor-badges">
+                                                        <span class="monitor-badge badge-status">{{ row.project.status }}</span>
+                                                        <span class="monitor-badge badge-node badge-{{ row.status_key }}">{{ row.node_status }}</span>
+                                                    </div>
+                                                </div>
+                                                <div class="monitor-meta">
+                                                    <div>
+                                                        <span class="monitor-meta-label">开始日期</span>
+                                                        <span class="monitor-meta-value">
+                                                            {% if row.start_date %}{{ row.start_date|date:"Y-m-d" }}{% else %}—{% endif %}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <span class="monitor-meta-label">结束日期</span>
+                                                        <span class="monitor-meta-value">
+                                                            {% if row.end_date %}{{ row.end_date|date:"Y-m-d" }}{% else %}—{% endif %}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <span class="monitor-meta-label">中期节点</span>
+                                                        <span class="monitor-meta-value">
+                                                            {% if row.midpoint_date %}{{ row.midpoint_date|date:"Y-m-d" }}{% else %}—{% endif %}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <span class="monitor-meta-label">剩余天数</span>
+                                                        <span class="monitor-meta-value">
+                                                            {% if row.days_remaining != None %}{{ row.days_remaining }} 天{% else %}—{% endif %}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="monitor-card-progress">
+                                                {% if row.progress_available %}
+                                                    <div class="progress-track">
+                                                        <span class="progress-midpoint" style="left: {{ row.midpoint_percent }}%"></span>
+                                                        <div class="progress-fill" style="width: {{ row.progress_percent }}%"></div>
+                                                    </div>
+                                                    <div class="progress-meta">
+                                                        <span>{{ row.progress_percent }}%</span>
+                                                        <span>
+                                                            {% if row.overdue and row.overdue_days %}
+                                                                超期 {{ row.overdue_days }} 天
+                                                            {% elif row.days_remaining != None %}
+                                                                剩余 {{ row.days_remaining }} 天
+                                                            {% else %}
+                                                                —
+                                                            {% endif %}
+                                                        </span>
+                                                    </div>
+                                                {% else %}
+                                                    <div class="progress-empty">
+                                                        <i class="fas fa-calendar-xmark"></i>
+                                                        缺少日期，无法判定进度
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </article>
+                                    {% empty %}
+                                        <div class="empty-state">
+                                            <i class="fas fa-folder-open"></i>
+                                            <p>暂无符合条件的课题记录</p>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
+

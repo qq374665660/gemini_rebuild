@@ -1,0 +1,323 @@
+/* Progress Monitor Module */
+:root {
+  --monitor-surface: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(56, 189, 248, 0.04));
+  --monitor-glow: rgba(37, 99, 235, 0.18);
+}
+
+.monitor-hero {
+  position: relative;
+  overflow: hidden;
+  background: var(--monitor-surface);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.monitor-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 20% 20%, rgba(37, 99, 235, 0.18), transparent 55%),
+              radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.12), transparent 50%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.monitor-hero .page-header-content {
+  position: relative;
+  z-index: 1;
+}
+
+.monitor-rule-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--spacing-xl);
+  margin-bottom: var(--spacing-xl);
+}
+
+.monitor-rule-card,
+.monitor-filter-card {
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+}
+
+.monitor-rule-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.monitor-filter-form .form-group {
+  flex: 1;
+}
+
+.monitor-filter-row {
+  display: flex;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.monitor-filter-actions {
+  margin-top: var(--spacing-md);
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+}
+
+.monitor-list-section {
+  border: 1px solid var(--border-light);
+}
+
+.monitor-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.monitor-card {
+  display: grid;
+  grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr);
+  gap: var(--spacing-xl);
+  padding: var(--spacing-xl);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+  position: relative;
+  overflow: hidden;
+}
+
+.monitor-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  background: var(--primary-color);
+}
+
+.monitor-card.status-overdue::before {
+  background: var(--error-color);
+}
+
+.monitor-card.status-midterm::before {
+  background: var(--warning-color);
+}
+
+.monitor-card.status-complete::before {
+  background: var(--success-color);
+}
+
+.monitor-card.status-pending::before {
+  background: var(--info-color);
+}
+
+.monitor-card.status-unknown::before {
+  background: var(--border-dark);
+}
+
+.monitor-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+}
+
+.monitor-title {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.monitor-project-id {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.monitor-project-name {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.monitor-project-name:hover {
+  color: var(--primary-color);
+}
+
+.monitor-badges {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.monitor-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
+}
+
+.badge-node {
+  font-weight: var(--font-weight-semibold);
+}
+
+.badge-ontrack {
+  background: var(--primary-lighter);
+  color: var(--primary-dark);
+  border-color: var(--primary-light);
+}
+
+.badge-midterm {
+  background: var(--warning-light);
+  color: #92400e;
+  border-color: #fcd34d;
+}
+
+.badge-overdue {
+  background: var(--error-light);
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.badge-complete {
+  background: var(--success-light);
+  color: #166534;
+  border-color: #bbf7d0;
+}
+
+.badge-pending {
+  background: var(--info-light);
+  color: #0e7490;
+  border-color: #bae6fd;
+}
+
+.badge-unknown {
+  background: #f8fafc;
+  color: var(--text-tertiary);
+  border-color: var(--border-light);
+}
+
+.monitor-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.monitor-meta-label {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  margin-bottom: 2px;
+}
+
+.monitor-card-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  justify-content: center;
+}
+
+.progress-track {
+  position: relative;
+  height: 10px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+  border-radius: var(--radius-full);
+  transition: width 0.4s ease;
+}
+
+.monitor-card.status-overdue .progress-fill {
+  background: linear-gradient(90deg, var(--error-color), #f97316);
+}
+
+.monitor-card.status-midterm .progress-fill {
+  background: linear-gradient(90deg, var(--warning-color), #f97316);
+}
+
+.monitor-card.status-complete .progress-fill {
+  background: linear-gradient(90deg, var(--success-color), #22c55e);
+}
+
+.progress-midpoint {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 18px;
+  background: var(--border-dark);
+  opacity: 0.6;
+}
+
+.progress-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.progress-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.empty-state {
+  text-align: center;
+  padding: var(--spacing-xl);
+  color: var(--text-tertiary);
+}
+
+.empty-state i {
+  font-size: 36px;
+  margin-bottom: var(--spacing-sm);
+  color: var(--text-disabled);
+}
+
+@media (max-width: 1200px) {
+  .monitor-card {
+    grid-template-columns: 1fr;
+  }
+  .monitor-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 992px) {
+  .monitor-rule-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .monitor-meta {
+    grid-template-columns: 1fr;
+  }
+  .monitor-filter-row {
+    flex-direction: column;
+  }
+  .monitor-filter-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

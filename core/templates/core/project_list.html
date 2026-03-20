@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>科研课题管理系统</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .project-table .col-level,
+        .project-table .col-status,
+        .project-table .col-budget {
+            white-space: nowrap;
+            padding-bottom: 14px;
+        }
+
+        .project-table .col-level .badge,
+        .project-table .col-status .badge {
+            display: inline-flex;
+            align-items: center;
+            white-space: nowrap;
+        }
+
+        .filter-panel {
+            position: relative;
+            padding: 20px;
+            border-radius: 18px;
+            border: 1px solid var(--border-light);
+            background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+            overflow: hidden;
+        }
+
+        .filter-panel::before {
+            content: '';
+            position: absolute;
+            right: -120px;
+            top: -120px;
+            width: 240px;
+            height: 240px;
+            background: radial-gradient(circle, rgba(37, 99, 235, 0.15), transparent 65%);
+            pointer-events: none;
+        }
+
+        .filter-panel-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .filter-panel-title {
+            font-family: var(--font-family-display);
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .filter-panel-subtitle {
+            color: var(--text-secondary);
+            font-size: var(--font-size-sm);
+            margin-top: 4px;
+        }
+
+        .filter-panel-actions {
+            display: flex;
+            align-items: center;
+        }
+
+        .filter-tip {
+            padding: 6px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--border-light);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-size: var(--font-size-xs);
+        }
+
+        .active-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px dashed var(--primary-light);
+            background: var(--primary-lighter);
+            margin-bottom: 12px;
+        }
+
+        .active-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: var(--font-size-xs);
+            font-weight: 600;
+            color: var(--primary-dark);
+        }
+
+        .filter-chip {
+            background: #ffffff;
+            border: 1px solid var(--border-light);
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: var(--font-size-xs);
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .filter-form {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-md);
+        }
+
+        .filter-section {
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid var(--border-light);
+            background: var(--bg-primary);
+            box-shadow: 0 6px 14px rgba(15, 23, 42, 0.05);
+        }
+
+        .filter-section-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: var(--font-size-sm);
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+
+        .filter-grid {
+            display: grid;
+            gap: var(--spacing-md);
+            align-items: end;
+        }
+
+        .filter-grid-3 {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .filter-grid-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .filter-span-2 {
+            grid-column: span 2;
+        }
+
+        .filter-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-multi {
+            min-height: 160px;
+            padding: 8px;
+            border-radius: 12px;
+            border: 1px solid var(--border-light);
+            background: var(--bg-primary);
+        }
+
+        .filter-search {
+            border-radius: 10px;
+        }
+
+        .range-grid .form-group {
+            min-width: 0;
+        }
+
+        .range-fields {
+            display: flex;
+            gap: 8px;
+        }
+
+        .range-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .range-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 8px;
+            border-radius: 8px;
+            font-size: var(--font-size-xs);
+            background: var(--bg-tertiary);
+            color: var(--text-tertiary);
+            white-space: nowrap;
+        }
+
+        .filter-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding-top: 12px;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .filter-note {
+            color: var(--text-tertiary);
+            font-size: var(--font-size-sm);
+        }
+
+        .form-hint {
+            color: var(--text-tertiary);
+            font-size: var(--font-size-xs);
+            margin-top: 4px;
+        }
+
+        .filter-panel .form-control:focus,
+        .filter-panel select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+        }
+
+        @media (max-width: 1024px) {
+            .filter-grid-3 {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .filter-span-2 {
+                grid-column: span 2;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .filter-grid-3,
+            .filter-grid-2 {
+                grid-template-columns: 1fr;
+            }
+
+            .filter-span-2 {
+                grid-column: span 1;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .filter-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-actions .btn {
+                width: 100%;
+            }
+        }
+</style>
+</head>
+<body>
+    <div class="app-layout">
+        <!-- 顶部导航栏 -->
+        {% include 'core/partials/navbar.html' %}
+        
+        <!-- 主要内容区域 -->
+        <main class="app-main">
+            <div class="app-content">
+                <!-- 页面头部 -->
+                <div class="page-header">
+                    <div class="container">
+                        <div class="page-header-content">
+                            <div>
+                                <h1 class="page-title">
+                                    <i class="fas fa-project-diagram"></i>
+                                    课题管理
+                                </h1>
+                                <p class="page-subtitle">管理和跟踪科研课题的全生命周期</p>
+                            </div>
+                            <div class="page-actions">
+                                <button class="btn btn-secondary" id="export-btn">
+                                    <i class="fas fa-download"></i>
+                                    导出课题清单
+                                </button>
+                                <button class="btn btn-secondary" id="import-btn">
+                                    <i class="fas fa-file-excel"></i>
+                                    从Excel导入
+                                </button>
+                                <a href="{% url 'create_project' %}" class="btn btn-primary">
+                                    <i class="fas fa-plus"></i>
+                                    新建课题
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 页面内容 -->
+                <div class="page-body">
+                    <div class="container">
+                        <!-- 消息提示 -->
+                        {% if messages %}
+                            {% for message in messages %}
+                                <div class="alert alert-{{ message.tags }}">
+                                    <i class="fas fa-{% if message.tags == 'success' %}check-circle{% elif message.tags == 'error' %}exclamation-circle{% else %}info-circle{% endif %}"></i>
+                                    {{ message }}
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+
+                        <!-- 统计卡片 -->
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-card-icon">
+                                    <i class="fas fa-project-diagram"></i>
+                                </div>
+                                <div class="stat-card-value">{{ total_projects }}</div>
+                                <div class="stat-card-label">总课题数</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-card-icon">
+                                    <i class="fas fa-play-circle"></i>
+                                </div>
+                                <div class="stat-card-value">{{ ongoing_projects }}</div>
+                                <div class="stat-card-label">进行中</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-card-icon">
+                                    <i class="fas fa-check-circle"></i>
+                                </div>
+                                <div class="stat-card-value">{{ completed_projects }}</div>
+                                <div class="stat-card-label">已完成</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-card-icon">
+                                    <i class="fas fa-dollar-sign"></i>
+                                </div>
+                                <div class="stat-card-value">{{ total_budget|floatformat:1 }}</div>
+                                <div class="stat-card-label">总预算(万)</div>
+                            </div>
+                        </div>
+                        
+                        <!-- 筛选和搜索 -->
+                        <div class="content-section">
+                            <div class="content-section-header">
+                                <h3 class="content-section-title">
+                                    <i class="fas fa-filter"></i>
+                                    筛选和搜索
+                                </h3>
+                                <div class="content-section-actions">
+                                    <button class="btn btn-text" id="toggle-filters">
+                                        <i class="fas fa-chevron-up"></i>
+                                        收起
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="content-section-body" id="filter-section">
+                                <div class="filter-panel">
+                                    <div class="filter-panel-head">
+                                        <div>
+                                            <div class="filter-panel-title">Excel 式筛选</div>
+                                            <div class="filter-panel-subtitle">多维度组合筛选，支持范围与日期过滤</div>
+                                        </div>
+                                        <div class="filter-panel-actions">
+                                            <span class="filter-tip">多选请按住 Ctrl/Shift</span>
+                                        </div>
+                                    </div>
+                                    {% if filters_applied %}
+                                        <div class="active-filters">
+                                            <span class="active-label"><i class="fas fa-filter"></i> 已应用</span>
+                                            {% if query %}<span class="filter-chip">关键词: {{ query }}</span>{% endif %}
+                                            {% for y in selected_years %}<span class="filter-chip">年份: {{ y }}</span>{% endfor %}
+                                            {% for s in selected_statuses %}<span class="filter-chip">状态: {{ s }}</span>{% endfor %}
+                                            {% for lvl in selected_levels %}<span class="filter-chip">级别: {{ lvl }}</span>{% endfor %}
+                                            {% for own in selected_ownerships %}<span class="filter-chip">归属: {{ own }}</span>{% endfor %}
+                                            {% for t in selected_types %}<span class="filter-chip">类型: {{ t }}</span>{% endfor %}
+                                            {% for r in selected_roles %}<span class="filter-chip">角色: {{ r }}</span>{% endfor %}
+                                            {% for unit in selected_units %}<span class="filter-chip">单位: {{ unit }}</span>{% endfor %}
+                                            {% for lead in selected_leads %}<span class="filter-chip">负责人: {{ lead }}</span>{% endfor %}
+                                            {% if min_budget %}<span class="filter-chip">预算≥{{ min_budget }}</span>{% endif %}
+                                            {% if max_budget %}<span class="filter-chip">预算≤{{ max_budget }}</span>{% endif %}
+                                            {% if start_date_from %}<span class="filter-chip">开始≥{{ start_date_from }}</span>{% endif %}
+                                            {% if start_date_to %}<span class="filter-chip">开始≤{{ start_date_to }}</span>{% endif %}
+                                            {% if end_date_from %}<span class="filter-chip">结束≥{{ end_date_from }}</span>{% endif %}
+                                            {% if end_date_to %}<span class="filter-chip">结束≤{{ end_date_to }}</span>{% endif %}
+                                        </div>
+                                    {% endif %}
+                                    <form method="get" action="" class="filter-form">
+                                        <div class="filter-section">
+                                            <div class="filter-section-title">
+                                                <i class="fas fa-sliders"></i>
+                                                关键词与基础条件
+                                            </div>
+                                            <div class="filter-grid filter-grid-3">
+                                                <div class="form-group filter-span-2">
+                                                    <label class="form-label">搜索关键词</label>
+                                                    <input type="text" name="q" class="form-control" placeholder="课题名称、负责人、单位、内容..." value="{{ query|default:'' }}">
+                                                    <div class="form-hint">可用空格/逗号分词，系统按“全部包含”筛选</div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="form-label">年份（多选）</label>
+                                                    <select name="year" class="form-control filter-multi" multiple size="5">
+                                                        {% for y in distinct_years %}
+                                                            <option value="{{ y }}" {% if y|stringformat:"s" in selected_years %}selected{% endif %}>{{ y }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="form-label">状态（多选）</label>
+                                                    <select name="status" class="form-control filter-multi" multiple size="5">
+                                                        {% for s in distinct_statuses %}
+                                                            <option value="{{ s }}" {% if s in selected_statuses %}selected{% endif %}>{{ s }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="form-label">级别（多选）</label>
+                                                    <select name="level" class="form-control filter-multi" multiple size="4">
+                                                        {% for lvl in distinct_levels %}
+                                                            <option value="{{ lvl }}" {% if lvl in selected_levels %}selected{% endif %}>{{ lvl }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="filter-section">
+                                            <div class="filter-section-title">
+                                                <i class="fas fa-layer-group"></i>
+                                                分类与角色
+                                            </div>
+                                            <div class="filter-grid filter-grid-3">
+                                                <div class="form-group">
+                                                    <label class="form-label">归属（多选）</label>
+                                                    <select name="ownership" class="form-control filter-multi" multiple size="4">
+                                                        {% for own in distinct_ownerships %}
+                                                            <option value="{{ own }}" {% if own in selected_ownerships %}selected{% endif %}>{{ own }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="form-label">类型（多选）</label>
+                                                    <select name="project_type" class="form-control filter-multi" multiple size="4">
+                                                        {% for t in distinct_types %}
+                                                            <option value="{{ t }}" {% if t in selected_types %}selected{% endif %}>{{ t }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="form-label">角色（多选）</label>
+                                                    <select name="role" class="form-control filter-multi" multiple size="4">
+                                                        {% for r in distinct_roles %}
+                                                            <option value="{{ r }}" {% if r in selected_roles %}selected{% endif %}>{{ r }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="filter-section">
+                                            <div class="filter-section-title">
+                                                <i class="fas fa-users"></i>
+                                                负责人 / 单位
+                                            </div>
+                                            <div class="filter-grid filter-grid-2">
+                                                <div class="form-group filter-stack">
+                                                    <label class="form-label">归口单位（多选）</label>
+                                                    <input type="text" class="form-control filter-search" data-filter-search="filter-unit" placeholder="筛选选项...">
+                                                    <select id="filter-unit" name="managing_unit" class="form-control filter-multi" multiple size="6">
+                                                        {% for unit in distinct_units %}
+                                                            <option value="{{ unit }}" {% if unit in selected_units %}selected{% endif %}>{{ unit }}</option>
+                                                        {% endfor %}
+                                                        <option value="__blank__" {% if '__blank__' in selected_units %}selected{% endif %}>（空值）</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-group filter-stack">
+                                                    <label class="form-label">负责人（多选）</label>
+                                                    <input type="text" class="form-control filter-search" data-filter-search="filter-lead" placeholder="筛选选项...">
+                                                    <select id="filter-lead" name="project_lead" class="form-control filter-multi" multiple size="6">
+                                                        {% for lead in distinct_leads %}
+                                                            <option value="{{ lead }}" {% if lead in selected_leads %}selected{% endif %}>{{ lead }}</option>
+                                                        {% endfor %}
+                                                        <option value="__blank__" {% if '__blank__' in selected_leads %}selected{% endif %}>（空值）</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="filter-section">
+                                            <div class="filter-section-title">
+                                                <i class="fas fa-chart-line"></i>
+                                                范围条件
+                                            </div>
+                                            <div class="filter-grid filter-grid-3 range-grid">
+                                                <div class="form-group range-group">
+                                                    <label class="form-label">预算范围（万元）</label>
+                                                    <div class="range-fields">
+                                                        <div class="range-item">
+                                                            <span class="range-tag">下限</span>
+                                                            <input type="number" step="0.01" name="min_budget" class="form-control" value="{{ min_budget }}" placeholder="0">
+                                                        </div>
+                                                        <div class="range-item">
+                                                            <span class="range-tag">上限</span>
+                                                            <input type="number" step="0.01" name="max_budget" class="form-control" value="{{ max_budget }}" placeholder="999">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group range-group">
+                                                    <label class="form-label">开始日期范围</label>
+                                                    <div class="range-fields">
+                                                        <div class="range-item">
+                                                            <span class="range-tag">从</span>
+                                                            <input type="date" name="start_date_from" class="form-control" value="{{ start_date_from }}">
+                                                        </div>
+                                                        <div class="range-item">
+                                                            <span class="range-tag">至</span>
+                                                            <input type="date" name="start_date_to" class="form-control" value="{{ start_date_to }}">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group range-group">
+                                                    <label class="form-label">计划结束范围</label>
+                                                    <div class="range-fields">
+                                                        <div class="range-item">
+                                                            <span class="range-tag">从</span>
+                                                            <input type="date" name="end_date_from" class="form-control" value="{{ end_date_from }}">
+                                                        </div>
+                                                        <div class="range-item">
+                                                            <span class="range-tag">至</span>
+                                                            <input type="date" name="end_date_to" class="form-control" value="{{ end_date_to }}">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="filter-actions">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fas fa-search"></i>
+                                                应用筛选
+                                            </button>
+                                            <a href="{% url 'project_list' %}" class="btn btn-secondary">
+                                                <i class="fas fa-undo"></i>
+                                                清空筛选
+                                            </a>
+                                            <span class="filter-note">空选 = 不限制</span>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 课题列表 -->
+                        <div class="content-section">
+                            <div class="content-section-header">
+                                <h3 class="content-section-title">
+                                    <i class="fas fa-list"></i>
+                                    课题列表
+                                    <span class="badge badge-primary">{{ projects|length }}</span>
+                                </h3>
+                                <div class="content-section-actions">
+                                    <button class="btn btn-text" id="view-toggle" data-view="table">
+                                        <i class="fas fa-th-large"></i>
+                                        卡片视图
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="content-section-body">
+                                {% if projects %}
+                                    <!-- 表格视图 -->
+                                    <div id="table-view" class="table-responsive">
+                                        <table class="table project-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>序号</th>
+                                                    <th>课题名称</th>
+                                                    <th>负责人</th>
+                                                    <th class="col-level">级别</th>
+                                                    <th>年份</th>
+                                                    <th class="col-status">状态</th>
+                                                    <th class="col-budget">预算</th>
+                                                    <th>操作</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for project in projects %}
+                                                <tr>
+                                                    <td>{{ forloop.counter }}</td>
+                                                    <td>
+                                                        <div>
+                                                            <strong>{{ project.name }}</strong>
+                                                            <div class="text-muted" style="font-size: 0.85em;">{{ project.ownership }} · {{ project.managing_unit }}</div>
+                                                        </div>
+                                                    </td>
+                                                    <td>{{ project.project_lead }}</td>
+                                                    <td class="col-level"><span class="badge badge-secondary">{{ project.level }}</span></td>
+                                                    <td>{{ project.start_year }}</td>
+                                                    <td class="col-status">
+                                                        {% if project.status == '在研' or project.status == '进行中' or project.status == '执行中' %}
+                                                            <span class="badge badge-primary">{{ project.status }}</span>
+                                                        {% elif project.status == '结题' or project.status == '完成' or project.status == '已完成' %}
+                                                            <span class="badge badge-success">{{ project.status }}</span>
+                                                        {% else %}
+                                                            <span class="badge badge-warning">{{ project.status }}</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td class="col-budget">
+                                                        {% if project.total_budget %}
+                                                            <strong>{{ project.total_budget|floatformat:1 }}万</strong>
+                                                        {% else %}
+                                                            <span class="text-muted">-</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        <div class="d-flex gap-xs">
+                                                            <a href="{% url 'project_detail' project.project_id %}" class="btn btn-sm btn-primary" title="查看详情">
+                                                                <i class="fas fa-eye"></i>
+                                                            </a>
+                                                            <button class="btn btn-sm btn-danger" onclick="confirmDelete('{{ project.project_id }}', '{{ project.name }}')" title="删除课题">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    <!-- 卡片视图 -->
+                                    <div id="card-view" class="card-grid" style="display: none;">
+                                        {% for project in projects %}
+                                        <div class="card animate-fade-in">
+                                            <div class="card-header">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <div>
+                                                        {% if project.status == '在研' or project.status == '进行中' or project.status == '执行中' %}
+                                                            <span class="badge badge-primary">{{ project.status }}</span>
+                                                        {% elif project.status == '结题' or project.status == '完成' or project.status == '已完成' %}
+                                                            <span class="badge badge-success">{{ project.status }}</span>
+                                                        {% else %}
+                                                            <span class="badge badge-warning">{{ project.status }}</span>
+                                                        {% endif %}
+                                                        <span class="badge badge-secondary ml-1">{{ project.level }}</span>
+                                                    </div>
+                                                    <span class="text-muted">{{ project.start_year }}</span>
+                                                </div>
+                                            </div>
+                                            <div class="card-body">
+                                                <h4 style="margin: 0 0 var(--spacing-sm) 0; font-size: var(--font-size-lg); line-height: 1.4;">
+                                                    {{ project.name }}
+                                                </h4>
+                                                <div class="text-muted mb-2" style="font-size: var(--font-size-sm);">
+                                                    <i class="fas fa-building"></i> {{ project.ownership }} · {{ project.managing_unit }}
+                                                </div>
+                                                <div class="text-muted mb-3" style="font-size: var(--font-size-sm);">
+                                                    <i class="fas fa-user"></i> {{ project.project_lead }}
+                                                </div>
+                                                {% if project.total_budget %}
+                                                <div class="text-primary" style="font-weight: var(--font-weight-semibold);">
+                                                    <i class="fas fa-dollar-sign"></i> 总预算：{{ project.total_budget|floatformat:1 }}万元
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                            <div class="card-footer">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <small class="text-muted">课题编号：{{ project.project_id }}</small>
+                                                    <div class="d-flex gap-xs">
+                                                        <a href="{% url 'project_detail' project.project_id %}" class="btn btn-sm btn-primary">
+                                                            <i class="fas fa-eye"></i> 查看
+                                                        </a>
+                                                        <button class="btn btn-sm btn-danger" onclick="confirmDelete('{{ project.project_id }}', '{{ project.name }}')">
+                                                            <i class="fas fa-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <div class="empty-state">
+                                        <div class="empty-state-icon">
+                                            <i class="fas fa-search"></i>
+                                        </div>
+                                        <h3 class="empty-state-title">没有找到课题</h3>
+                                        <p class="empty-state-description">
+                                            当前筛选条件下没有找到匹配的课题。您可以调整筛选条件或创建新的课题。
+                                        </p>
+                                        <div class="empty-state-actions">
+                                            <a href="{% url 'project_list' %}" class="btn btn-secondary">
+                                                <i class="fas fa-undo"></i>
+                                                清除筛选
+                                            </a>
+                                            <a href="{% url 'create_project' %}" class="btn btn-primary">
+                                                <i class="fas fa-plus"></i>
+                                                创建课题
+                                            </a>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- 隐藏的文件上传表单 -->
+    <form method="post" action="{% url 'import_from_excel' %}" enctype="multipart/form-data" id="excel-form" style="display: none;">
+        {% csrf_token %}
+        <input type="file" name="excel_file" required accept=".xlsx, .xls" id="excel_upload">
+    </form>
+    <script>
+        const exportButton = document.getElementById('export-btn');
+        if (exportButton) {
+            exportButton.addEventListener('click', function() {
+                const exportUrl = "{% url 'export_project_list' %}";
+                const query = window.location.search;
+                window.location.href = query ? `${exportUrl}${query}` : exportUrl;
+            });
+        }
+
+        // Excel导入功能
+        document.getElementById('import-btn').addEventListener('click', function() {
+            document.getElementById('excel_upload').click();
+        });
+        
+        document.getElementById('excel_upload').addEventListener('change', function() {
+            if (this.files.length > 0) {
+                document.getElementById('excel-form').submit();
+            }
+        });
+        
+        // 视图切换功能
+        document.getElementById('view-toggle').addEventListener('click', function() {
+            const tableView = document.getElementById('table-view');
+            const cardView = document.getElementById('card-view');
+            const currentView = this.dataset.view;
+            
+            if (currentView === 'table') {
+                tableView.style.display = 'none';
+                cardView.style.display = 'grid';
+                this.dataset.view = 'card';
+                this.innerHTML = '<i class="fas fa-table"></i> 表格视图';
+            } else {
+                tableView.style.display = 'block';
+                cardView.style.display = 'none';
+                this.dataset.view = 'table';
+                this.innerHTML = '<i class="fas fa-th-large"></i> 卡片视图';
+            }
+        });
+        
+        // 筛选区域折叠功能
+        document.getElementById('toggle-filters').addEventListener('click', function() {
+            const filterSection = document.getElementById('filter-section');
+            const icon = this.querySelector('i');
+            
+            if (filterSection.style.display === 'none') {
+                filterSection.style.display = 'block';
+                icon.className = 'fas fa-chevron-up';
+                this.innerHTML = '<i class="fas fa-chevron-up"></i> 收起';
+            } else {
+                filterSection.style.display = 'none';
+                icon.className = 'fas fa-chevron-down';
+                this.innerHTML = '<i class="fas fa-chevron-down"></i> 展开';
+            }
+        });
+        
+        // 全局搜索功能
+        document.getElementById('global-search').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const searchValue = this.value.trim();
+                if (searchValue) {
+                    window.location.href = `{% url 'project_list' %}?q=${encodeURIComponent(searchValue)}`;
+                }
+            }
+        });
+        
+        // 删除确认功能
+        function confirmDelete(projectId, projectName) {
+            if (confirm(`确定要删除课题"${projectName}"及其所有关联文件吗？\n\n此操作不可恢复，请谨慎操作。`)) {
+                window.location.href = `/project/${projectId}/delete/`;
+            }
+        }
+        
+        // 页面加载动画
+        document.addEventListener('DOMContentLoaded', function() {
+            document.body.classList.add('animate-fade-in');
+        });
+        
+        // 表格行点击功能
+        document.querySelectorAll('#table-view tbody tr').forEach(row => {
+            row.addEventListener('click', function(e) {
+                if (!e.target.closest('button') && !e.target.closest('a')) {
+                    const viewLink = this.querySelector('a[href*="project_detail"]');
+                    if (viewLink) {
+                        window.location.href = viewLink.href;
+                    }
+                }
+            });
+            
+            row.style.cursor = 'pointer';
+        });
+    
+        // Filter option search
+        function setupFilterOptionSearch() {
+            document.querySelectorAll('.filter-search').forEach(input => {
+                const targetId = input.dataset.filterSearch;
+                const select = document.getElementById(targetId);
+                if (!select) {
+                    return;
+                }
+                input.addEventListener('input', function() {
+                    const term = this.value.trim().toLowerCase();
+                    Array.from(select.options).forEach(option => {
+                        const text = option.text.toLowerCase();
+                        option.hidden = Boolean(term) && !text.includes(term);
+                    });
+                });
+            });
+        }
+        setupFilterOptionSearch();
+</script>
+</body>
+</html>

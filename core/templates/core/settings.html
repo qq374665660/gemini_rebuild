@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统设置 - 科研课题管理系统</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- 顶部导航栏 -->
+        {% include 'core/partials/navbar.html' %}
+        
+        <!-- 主要内容区域 -->
+        <main class="app-main">
+<div class="container">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header">
+                    <h4><i class="fas fa-cog"></i> 系统设置</h4>
+                </div>
+                <div class="card-body">
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                    
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="save_path">
+                        
+                        <div class="mb-4">
+                            <h5><i class="fas fa-folder"></i> 项目文件夹设置</h5>
+                            <hr>
+                            
+                            <div class="mb-3">
+                                <label for="projects_root" class="form-label">项目文件夹路径</label>
+                                <input type="text" class="form-control" id="projects_root" name="projects_root" 
+                                       value="{{ current_projects_root }}" required>
+                                <div class="form-text">
+                                    <strong>当前路径：</strong> {{ current_projects_root }}<br>
+                                    <strong>说明：</strong> 修改此路径将改变所有项目文件的存储位置。请确保路径有效且有写入权限。<br>
+                                    <strong>示例：</strong>
+                                    <ul class="mb-0">
+                                        <li>Windows: <code>D:\my_projects</code></li>
+                                        <li>Linux/Mac: <code>/home/user/my_projects</code></li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="migrate_existing" name="migrate_existing">
+                                    <label class="form-check-label" for="migrate_existing">
+                                        同步移动旧文件根目录到新路径
+                                    </label>
+                                </div>
+                                <div class="form-text">启用后，将尝试移动当前目录到新路径。如果新路径下已存在同名目录，将自动备份。</div>
+                            </div>
+                            
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <strong>注意：</strong> 修改路径后需要重启服务器才能生效。现有项目文件不会自动移动到新路径。
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> 保存路径设置
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <hr style="margin: 2rem 0;">
+                    
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="update_project_path">
+                        
+                        <div class="mb-4">
+                            <h5><i class="fas fa-folder-open"></i> 单个项目路径调整</h5>
+                            <hr>
+                            
+                            <div class="mb-3">
+                                <label for="project_id" class="form-label">选择项目</label>
+                                <select class="form-select" id="project_id" name="project_id" required>
+                                    <option value="" selected>请选择项目</option>
+                                    {% for p in projects %}
+                                        <option value="{{ p.project_id }}">{{ p.project_id }} - {{ p.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="project_path" class="form-label">项目目录路径</label>
+                                <input type="text" class="form-control" id="project_path" name="project_path" placeholder="\\192.168.1.100\\projects\\2025-在研-XXX-项目名" required>
+                                <div class="form-text">请输入绝对路径或网络共享路径（UNC）。</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="move_project_files" name="move_project_files">
+                                    <label class="form-check-label" for="move_project_files">
+                                        同步移动旧目录到新路径
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <button type="submit" class="btn btn-warning">
+                                <i class="fas fa-save"></i> 更新项目路径
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <hr style="margin: 2rem 0;">
+                    
+                    <!-- 网络共享设置 -->
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="save_network">
+                        
+                        <div class="mb-4">
+                            <h5><i class="fas fa-network-wired"></i> 内网共享设置（远程访问）</h5>
+                            <hr>
+                            
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>适用场景：</strong> 当服务器和访问电脑不在同一台机器时，需要配置网络共享路径才能打开项目文件夹。
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="enable_network_share" 
+                                           name="enable_network_share" {% if enable_network_share %}checked{% endif %}>
+                                    <label class="form-check-label" for="enable_network_share">
+                                        <strong>启用网络共享路径</strong>
+                                    </label>
+                                </div>
+                                <div class="form-text">启用后，内网其他电脑点击"打开项目文件夹"时将使用网络共享路径</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="enable_web_file_trial"
+                                           name="enable_web_file_trial" {% if enable_web_file_trial %}checked{% endif %}>
+                                    <label class="form-check-label" for="enable_web_file_trial">
+                                        <strong>启用 Web 文件管理试用入口</strong>
+                                    </label>
+                                </div>
+                                <div class="form-text">仅控制详情页的试用入口显示，不影响原有“打开文件夹”模式。</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="network_share_path" class="form-label">网络共享路径</label>
+                                <input type="text" class="form-control" id="network_share_path" name="network_share_path" 
+                                       value="{{ network_share_path }}" placeholder="\\192.168.1.100\projects">
+                                <div class="form-text">
+                                    <strong>格式示例：</strong> <code>\\服务器IP\共享文件夹名</code><br>
+                                    <strong>配置步骤：</strong>
+                                    <ol class="mb-0 mt-2">
+                                        <li>在服务器上右键 <code>projects</code> 文件夹 → 属性 → 共享</li>
+                                        <li>点击"共享"按钮，添加 <code>Everyone</code> 用户并设置读取权限</li>
+                                        <li>记录共享路径，格式如：<code>\\服务器名或IP\projects</code></li>
+                                        <li>在上方输入框填入共享路径</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i> 保存网络设置
+                            </button>
+                            <a href="{% url 'project_list' %}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> 返回
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+        </main>
+    </div>
+</body>
+</html>
