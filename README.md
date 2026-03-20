@@ -1,142 +1,150 @@
-# 科研课题管理系统 (Research Project Management System)
+# 科研课题管理系统
 
-## 项目概述
+一个基于 Django 的科研课题管理系统，用于管理课题台账、项目目录、进度统计、经费导入与 AI 辅助分析。
 
-这是一个基于Django的科研课题管理系统，用于管理科研项目的全生命周期。系统结合了结构化数据库管理和文件系统组织，为项目文档提供全面的管理功能。
+当前仓库已清理本地运行数据，适合作为公开代码仓库使用；数据库、日志、业务文件目录和本机网络配置均不会被提交。
 
-## 技术架构
+## 功能概览
 
-- **后端**: Django 4.2.23 with Python
-- **数据库**: SQLite (db.sqlite3)
-- **前端**: Django模板 + HTML/CSS/JavaScript
-- **主要应用**: `core` - 包含所有项目管理功能
+- 课题列表、详情、创建、删除
+- 自动生成标准化项目目录结构
+- 课题统计与进度监控
+- 经费数据导入、映射与快照管理
+- DOCX 任务书内容提取
+- AI 分析配置与内容分析
+- 本地目录与网络共享路径切换
 
-## 功能特性
+## 技术栈
 
-### 核心功能
-- 📊 **项目管理**: 创建、编辑、删除科研项目
-- 📁 **文件管理**: 自动创建标准化项目目录结构
-- 📈 **统计分析**: 项目统计和数据可视化
-- 📤 **数据导入**: 支持Excel文件批量导入项目数据
-- 🤖 **AI分析**: 集成AI服务进行项目内容分析
-
-### 项目目录结构
-系统自动为每个项目创建标准化目录结构：
-```
-项目文件夹/
-├── 01_申报/
-├── 02_立项/
-├── 03_开题/
-├── 04_中期/
-├── 05_变更/
-├── 06_结题/
-└── 07_其它/
-```
-
-## 快速开始
-
-### 环境要求
-- Python 3.8+
+- Python 3.13+
 - Django 4.2.23
-
-### 安装步骤
-
-1. **克隆项目**
-   ```bash
-   git clone <repository-url>
-   cd gemini_rebuild
-   ```
-
-2. **安装依赖**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **数据库迁移**
-   ```bash
-   python manage.py migrate
-   ```
-
-4. **启动开发服务器**
-   ```bash
-   python manage.py runserver
-   ```
-
-5. **访问系统**
-   打开浏览器访问: http://127.0.0.1:10086/
-
-## 数据模型
-
-### Project (项目模型)
-- **project_id**: 课题编号 (主键)
-- **name**: 课题名称
-- **ownership**: 课题归属 (西勘院/地下空间)
-- **level**: 课题级别 (国家级/省部级/公司级)
-- **project_type**: 课题类型 (应用研究/试验发展)
-- **status**: 课题状态
-- **start_year**: 开始年份
-- **budget**: 预算信息
-- **dates**: 各种时间节点
-
-### ProjectAnalysis (项目分析模型)
-- **project**: 关联项目
-- **analysis_type**: 分析类型
-- **analysis_result**: 分析结果
-- **confidence_score**: 置信度分数
-
-### APIConfig (API配置模型)
-- **service_name**: AI服务名称
-- **api_key**: API密钥
-- **is_active**: 启用状态
+- SQLite
+- openpyxl / pandas
+- requests / cryptography
+- waitress / whitenoise
 
 ## 主要页面
 
-- **项目列表** (`/`): 显示所有项目的概览
-- **项目详情** (`/project/<id>/`): 查看单个项目的详细信息
-- **创建项目** (`/project/create/`): 创建新项目
-- **统计分析** (`/statistics/`): 项目统计数据
-- **数据导入** (`/import/`): Excel文件导入
-- **API配置** (`/api-config/`): AI服务配置
+- `/`：课题列表
+- `/project/create/`：创建课题
+- `/project/<id>/`：课题详情
+- `/statistics/`：统计分析
+- `/progress/`：进度监控
+- `/expense/`：经费监控
+- `/api-config/`：AI 配置
+- `/settings/`：系统设置
 
-## 开发指南
+## 快速开始
 
-### 项目结构
+### 1. 克隆仓库
+
+```bash
+git clone https://github.com/qq374665660/gemini_rebuild.git
+cd gemini_rebuild
 ```
+
+### 2. 创建虚拟环境并安装依赖
+
+```bash
+python -m venv .venv
+.venv\\Scripts\\activate
+pip install -r requirements.txt
+```
+
+### 3. 配置环境变量
+
+推荐复制 `.env.example`，或手动设置以下变量：
+
+```bash
+set DJANGO_SECRET_KEY=replace-with-a-real-secret
+set DEEPSEEK_API_KEY=
+set KIMI_API_KEY=
+```
+
+说明：
+
+- `DJANGO_SECRET_KEY`：必填，公开部署时必须改成你自己的值
+- `DEEPSEEK_API_KEY`：可选，用于 DeepSeek 分析能力
+- `KIMI_API_KEY`：可选，用于 Kimi 分析能力
+
+### 4. 准备本地配置
+
+如果你需要网络共享目录功能，请复制示例文件：
+
+```bash
+copy network_config.example.json network_config.json
+```
+
+然后按实际环境修改 `network_config.json`。
+
+### 5. 初始化数据库
+
+```bash
+python manage.py migrate
+python manage.py createsuperuser
+```
+
+### 6. 启动开发服务器
+
+项目自定义了 `runserver` 默认端口，直接执行：
+
+```bash
+python manage.py runserver
+```
+
+默认地址为：
+
+```text
+http://127.0.0.1:10086/
+```
+
+## 生产运行说明
+
+仓库中提供了 Windows 服务和运维脚本：
+
+- `django_service.py`：Windows 服务入口
+- `scripts/restart_research_service.ps1`：服务重启脚本
+- `scripts/backup_weekly.ps1`：项目目录与 SQLite 备份脚本
+
+服务模式下默认通过 `waitress` 监听：
+
+```text
+0.0.0.0:1027
+```
+
+## 目录说明
+
+```text
 gemini_rebuild/
-├── core/                 # 主应用
-│   ├── models.py        # 数据模型
-│   ├── views.py         # 视图函数
-│   ├── urls.py          # URL路由
-│   ├── forms.py         # 表单定义
-│   ├── templates/       # 模板文件
-│   └── migrations/      # 数据库迁移
-├── project_manager/     # Django项目配置
-├── projects/            # 项目文件存储目录
-├── db.sqlite3          # SQLite数据库
-├── manage.py           # Django管理脚本
-└── requirements.txt    # 依赖包列表
+├── core/                    # 主应用：模型、视图、模板、静态资源
+├── project_manager/         # Django 配置
+├── scripts/                 # 运维与辅助脚本
+├── manage.py                # Django 管理入口
+├── requirements.txt         # 依赖列表
+├── network_config.example.json
+└── .env.example
 ```
 
-### 添加新功能
-1. 在 `core/models.py` 中定义数据模型
-2. 创建并运行数据库迁移
-3. 在 `core/views.py` 中添加视图函数
-4. 在 `core/urls.py` 中配置URL路由
-5. 创建相应的模板文件
+## 未提交到仓库的本地数据
 
-## 部署说明
+以下内容默认已加入 `.gitignore`：
 
-### 生产环境配置
-1. 设置 `DEBUG = False`
-2. 配置 `ALLOWED_HOSTS`
-3. 使用生产级数据库 (PostgreSQL/MySQL)
-4. 配置静态文件服务
-5. 设置安全密钥
+- `db.sqlite3`
+- `projects/`
+- `staticfiles/`
+- `django_service.log`
+- `network_config.json`
+- `_vendor/`
 
-## 许可证
+这样可以避免把真实业务数据、日志和机器配置提交到公开仓库。
 
-本项目仅供内部使用。
+## 当前状态
 
-## 联系方式
+这是一个仍在持续整理中的个人自用项目，当前仓库更偏向“可运行源码 + 运维脚本 + 使用说明”的公开版本。
 
-如有问题或建议，请联系开发团队。
+如果你想继续完善公开展示，下一步通常会做这几件事：
+
+- 补截图或演示 GIF
+- 增加 License
+- 增加 `.env.example` 之外的部署模板
+- 补自动化测试与 CI
