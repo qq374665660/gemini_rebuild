@@ -981,11 +981,11 @@
                                                     </div>
                                                     
                                                     <div class="form-group">
-                                                        <label class="form-label">负责人角色</label>
-                                                        {{ form.lead_role }}
-                                                        {% if form.lead_role.errors %}
+                                                        <label class="form-label">参与角色</label>
+                                                        {{ form.role }}
+                                                        {% if form.role.errors %}
                                                             <div class="form-error">
-                                                                {% for error in form.lead_role.errors %}
+                                                                {% for error in form.role.errors %}
                                                                     <i class="fas fa-exclamation-circle"></i> {{ error }}
                                                                 {% endfor %}
                                                             </div>
@@ -1511,7 +1511,7 @@
             document.querySelector('input[name="planned_end_date"]').value = `${currentYear + 3}-12-31`;
             document.querySelector('select[name="status"]').value = '在研';
             document.querySelector('input[name="project_lead"]').value = '张三';
-            document.querySelector('select[name="lead_role"]').value = '研究员';
+            document.querySelector('select[name="role"]').value = '牵头';
             document.querySelector('input[name="total_budget"]').value = '100.0';
             document.querySelector('input[name="external_funding"]').value = '60.0';
             document.querySelector('input[name="institute_funding"]').value = '25.0';

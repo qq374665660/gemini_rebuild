@@ -1,11 +1,20 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from io import BytesIO
+from pathlib import Path
+import tempfile
 
-from django.test import TestCase
+import openpyxl
+from django.contrib.messages.storage.fallback import FallbackStorage
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.template.loader import render_to_string
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from .forms import ProjectForm
 from .models import Project
+from .views import import_from_excel_view
 
 
 class ProjectFilterTests(TestCase):
@@ -175,3 +184,44 @@ class ProgressMonitorFilterTests(TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['project'].project_id, 'PM_MIDTERM')
         self.assertEqual(rows[0]['status_key'], 'midterm')
+
+
+class ProjectCreationTests(TestCase):
+    def test_create_project_page_renders_required_role_field(self):
+        html = render_to_string('core/create_project.html', {'form': ProjectForm()})
+
+        self.assertIn('name="role"', html)
+
+    def test_import_strips_text_fields_before_creating_directory(self):
+        workbook = openpyxl.Workbook()
+        worksheet = workbook.active
+        worksheet.append([
+            '课题编号', '课题名称', '课题归属', '归口单位', '课题级别',
+            '课题类型', '参与角色', '开始年份', '课题状态',
+        ])
+        worksheet.append([
+            'IMPORT-TRIM-1', '导入课题末尾空格 ', '西勘院', '测试单位', '公司级',
+            '应用研究', '牵头', 2026, '在研',
+        ])
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        upload = SimpleUploadedFile(
+            'projects.xlsx',
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
+        with tempfile.TemporaryDirectory() as projects_root:
+            with override_settings(PROJECTS_ROOT=Path(projects_root)):
+                request = RequestFactory().post(reverse('import_from_excel'), {'excel_file': upload})
+                request.session = {}
+                request._messages = FallbackStorage(request)
+                response = import_from_excel_view(request)
+
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(response.url, reverse('project_list'))
+                project = Project.objects.get(project_id='IMPORT-TRIM-1')
+                self.assertEqual(project.name, '导入课题末尾空格')
+                self.assertEqual(Path(project.directory_path).name, '2026-在研-IMPORT-TRIM-1-导入课题末尾空格')
+                self.assertTrue(Path(project.directory_path, '01_申报').is_dir())

@@ -310,9 +310,27 @@ def _move_path_with_backup(src_path, dest_path):
     shutil.move(src_path, dest_path)
     return True, backup_path
 
+def _sanitize_folder_segment(value, fallback='未命名'):
+    text = str(value or '').strip()
+    text = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '_', text)
+    text = re.sub(r'\s+', ' ', text).strip(' .')
+    if not text:
+        return fallback
+    reserved_names = {
+        'CON', 'PRN', 'AUX', 'NUL',
+        *(f'COM{i}' for i in range(1, 10)),
+        *(f'LPT{i}' for i in range(1, 10)),
+    }
+    if text.upper() in reserved_names:
+        text = f'_{text}'
+    return text
+
 def _get_project_folder_name(project):
-    sanitized_name = re.sub(r'[\\/*?"<>|]', '_', project.name)
-    return f"{project.start_year}-{project.status}-{project.project_id}-{sanitized_name}"
+    start_year = _sanitize_folder_segment(project.start_year, '未知年份')
+    status = _sanitize_folder_segment(project.status, '未设置状态')
+    project_id = _sanitize_folder_segment(project.project_id, '未编号')
+    name = _sanitize_folder_segment(project.name, '未命名课题')
+    return f"{start_year}-{status}-{project_id}-{name}"
 
 def create_project_directory_structure(project):
     """根据PRD文档4.3节要求创建课题目录结构"""
@@ -2051,7 +2069,7 @@ def import_from_excel_view(request):
                         
                         # 处理其他字段
                         else:
-                            model_data[model_field] = value
+                            model_data[model_field] = value.strip() if isinstance(value, str) else value
 
                 project_id = model_data.get('project_id')
                 if not project_id:
