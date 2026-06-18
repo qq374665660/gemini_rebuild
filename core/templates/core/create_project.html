@@ -138,18 +138,6 @@
             display: none;
         }
 
-        body.theme-create .navbar-search-input {
-            background: var(--surface-strong);
-            border-color: var(--stroke);
-            color: var(--ink);
-        }
-
-        body.theme-create .navbar-search-input:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 2px var(--ring);
-            background: var(--surface);
-        }
-
         body.theme-create .navbar-action-btn {
             color: var(--muted-strong);
             border-radius: 8px;
@@ -1569,16 +1557,6 @@
             syncStartYear();
             updateTotalBudget();
             setTotalBudgetReadonly();
-        });
-        
-        // 全局搜索功能
-        document.getElementById('global-search').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                const searchValue = this.value.trim();
-                if (searchValue) {
-                    window.location.href = `{% url 'project_list' %}?q=${encodeURIComponent(searchValue)}`;
-                }
-            }
         });
         
         // 实时预算计算

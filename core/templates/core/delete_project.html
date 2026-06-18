@@ -139,15 +139,6 @@
             return confirm('您确定要删除课题"{{ project.name|escapejs }}"吗？\n\n此操作将永久删除：\n- 课题的所有基本信息\n- 相关的分析结果\n- 课题目录下的所有文件\n\n此操作不可恢复，请谨慎操作！');
         }
         
-        // 全局搜索功能
-        document.getElementById('global-search').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                const searchValue = this.value.trim();
-                if (searchValue) {
-                    window.location.href = `{% url 'project_list' %}?q=${encodeURIComponent(searchValue)}`;
-                }
-            }
-        });
     </script>
     
     <style>

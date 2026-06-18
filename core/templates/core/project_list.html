@@ -769,16 +769,6 @@
             }
         });
         
-        // 全局搜索功能
-        document.getElementById('global-search').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                const searchValue = this.value.trim();
-                if (searchValue) {
-                    window.location.href = `{% url 'project_list' %}?q=${encodeURIComponent(searchValue)}`;
-                }
-            }
-        });
-        
         // 删除确认功能
         function confirmDelete(projectId, projectName) {
             if (confirm(`确定要删除课题"${projectName}"及其所有关联文件吗？\n\n此操作不可恢复，请谨慎操作。`)) {

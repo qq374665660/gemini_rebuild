@@ -9,11 +9,6 @@
                 科研课题管理系统
             </a>
 
-            <div class="navbar-search">
-                <i class="fas fa-search navbar-search-icon"></i>
-                <input type="text" class="navbar-search-input" placeholder="搜索课题、负责人、单位、内容..." id="global-search">
-            </div>
-
             <ul class="navbar-nav">
                 <li class="navbar-nav-item">
                     <a href="{% url 'project_list' %}" class="navbar-nav-link{% if current == 'project_list' or current == 'project_detail' or current == 'create_project' or current == 'delete_project' %} active{% endif %}">
