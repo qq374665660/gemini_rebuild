@@ -100,7 +100,7 @@
                                         重新匹配
                                     </button>
                                 </form>
-                                <form method="post" action="{% url 'expense_import' %}" enctype="multipart/form-data" class="expense-upload-form">
+                                {% if is_system_admin %}<form method="post" action="{% url 'expense_import' %}" enctype="multipart/form-data" class="expense-upload-form">
                                     {% csrf_token %}
                                     <div class="form-group">
                                         <label for="expense_file">导入支出表格</label>
@@ -110,7 +110,7 @@
                                         <i class="fas fa-file-import"></i>
                                         上传并更新
                                     </button>
-                                </form>
+                                </form>{% endif %}
                                 <div class="expense-meta-grid">
                                     <div class="expense-meta-card">
                                         <span class="label">文件更新时间</span>
@@ -303,7 +303,7 @@
                                                     <td>{{ row.best_name }}</td>
                                                     <td>{{ row.best_score|floatformat:2 }}</td>
                                                     <td>
-                                                        <form method="post" action="{% url 'expense_mapping' %}" class="mapping-form">
+                                                        {% if is_system_admin %}<form method="post" action="{% url 'expense_mapping' %}" class="mapping-form">
                                                             {% csrf_token %}
                                                             <input type="hidden" name="description" value="{{ row.description }}">
                                                             <input type="hidden" name="threshold" value="{{ threshold }}">
@@ -316,7 +316,7 @@
                                                                 </select>
                                                                 <button type="submit" class="btn btn-sm btn-primary">映射</button>
                                                             </div>
-                                                        </form>
+                                                        </form>{% endif %}
                                                     </td>
                                                 </tr>
                                                 {% endfor %}

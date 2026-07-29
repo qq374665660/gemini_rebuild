@@ -1,0 +1,48 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 科研课题管理系统</title>
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { min-height: 100vh; background: linear-gradient(135deg, #eff6ff, #f8fafc); }
+        .login-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+        .login-card { width: min(430px, 100%); background: #fff; border: 1px solid var(--border-light); border-radius: 20px; padding: 32px; box-shadow: 0 24px 60px rgba(15, 23, 42, .12); }
+        .login-brand { text-align: center; margin-bottom: 28px; }
+        .login-brand i { font-size: 36px; color: var(--primary-color); margin-bottom: 12px; }
+        .login-brand h1 { margin: 0; font-size: 24px; }
+        .login-brand p { color: var(--text-secondary); margin: 8px 0 0; }
+        .login-form p { margin-bottom: 18px; }
+        .login-form label { display: block; margin-bottom: 6px; font-weight: 600; }
+        .login-form input { width: 100%; padding: 11px 12px; border: 1px solid var(--border-light); border-radius: 10px; box-sizing: border-box; }
+        .login-form .btn { width: 100%; justify-content: center; }
+        .errorlist { color: var(--danger-color); padding-left: 18px; }
+    </style>
+</head>
+<body>
+    <main class="login-shell">
+        <section class="login-card">
+            <div class="login-brand">
+                <i class="fas fa-flask"></i>
+                <h1>科研课题管理系统</h1>
+                <p>请使用管理员分配的账号登录</p>
+            </div>
+            {% if form.non_field_errors %}
+                <div class="alert alert-error">用户名或密码不正确，请重新输入。</div>
+            {% endif %}
+            <form method="post" class="login-form">
+                {% csrf_token %}
+                {{ form.as_p }}
+                {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-right-to-bracket"></i> 登录
+                </button>
+            </form>
+        </section>
+    </main>
+</body>
+</html>

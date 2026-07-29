@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
 from django.urls import reverse
 from django.db.models import Q, Count
-from django.http import HttpResponse, Http404, FileResponse, JsonResponse
+from django.http import HttpResponse, Http404, FileResponse, JsonResponse, HttpResponseForbidden
 from django.utils.encoding import force_str
 import shutil
 import os
@@ -14,10 +14,13 @@ import subprocess
 from difflib import SequenceMatcher
 from decimal import Decimal
 from django.db import transaction
-from .models import Project, ProjectAnalysis, APIConfig, MetricsItem, ExpenseImport, ExpenseSnapshot, ExpenseMapping
+from .models import Project, ProjectAnalysis, APIConfig, MetricsItem, ExpenseImport, ExpenseSnapshot, ExpenseMapping, OperationLog
 from .forms import ProjectForm
 import openpyxl
 from django.contrib import messages
+from django.contrib.auth import get_user_model, update_session_auth_hash
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 import json
 import requests
 from django.utils import timezone
@@ -27,9 +30,11 @@ from io import BytesIO
 from urllib.parse import quote
 from django.views.decorators.http import require_POST
 from .docx_task_extractor import extract_task_docx
+from . import backup_schedule as backup_scheduler
 from django.utils.dateparse import parse_date
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
+from .access import is_system_admin
 
 def _normalize_path(path_str):
     normalized = os.path.normpath(path_str)
@@ -68,7 +73,7 @@ def _relpath_for_tree(item_path, base_path):
     return rel_path.replace('\\', '/')
 
 def _compute_progress_node(project, today):
-    completed_statuses = {'未立项', '结题', '终止'}
+    completed_statuses = {'结题', '终止'}
     completed = project.status in completed_statuses or bool(project.actual_completion_date)
 
     start_date = project.start_date
@@ -802,7 +807,7 @@ def project_list_view(request):
     # Summary stats
     from django.db.models import Sum
     total_projects = queryset.count()
-    completed_projects = queryset.filter(status__in=['未立项', '结题', '终止']).count()
+    completed_projects = queryset.filter(status__in=['结题', '终止']).count()
     ongoing_projects = total_projects - completed_projects
     total_budget = queryset.aggregate(Sum('total_budget'))['total_budget__sum'] or 0
 
@@ -1440,6 +1445,12 @@ def project_detail_view(request, project_id):
     protocol_setup_reg_path = str(Path(settings.BASE_DIR) / 'setup_protocol_handler.reg')
     client_setup_reg_path = str(Path(settings.BASE_DIR) / 'client_setup_protocol.reg')
 
+    # 读取tab参数，用于分析完成后返回正确的tab
+    active_tab = request.GET.get('tab', 'info')
+    valid_tabs = {'info', 'files', 'content-analysis', 'metrics-analysis'}
+    if active_tab not in valid_tabs:
+        active_tab = 'info'
+
     context = {
         'project': project,
         'form': form,
@@ -1454,6 +1465,7 @@ def project_detail_view(request, project_id):
         'enable_web_file_trial': network_config.get('enable_web_file_trial', True),
         'protocol_setup_reg_path': protocol_setup_reg_path,
         'client_setup_reg_path': client_setup_reg_path,
+        'active_tab': active_tab,
     }
     return render(request, 'core/project_detail.html', context)
 
@@ -1642,7 +1654,6 @@ def file_action_view(request, project_id, action):
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '缺少目标路径。'})
             messages.error(request, "缺少目标路径。")
-            return redirect('project_detail', project_id=project.project_id)
 
         if not new_name:
             if is_ajax:
@@ -1809,8 +1820,16 @@ def analyze_content_view(request, project_id, analysis_type):
     
     project = get_object_or_404(Project, project_id=project_id)
     
+    # 根据分析类型确定返回时的tab锚点
+    tab_anchor_map = {
+        'research_content': 'content-analysis',
+        'output_metrics': 'metrics-analysis',
+    }
+    tab_anchor = tab_anchor_map.get(analysis_type, '')
+
     if request.method == 'POST':
-        uploaded_file = request.FILES.get('document')
+        # 兼容前端表单字段名 'files' 和 'document'
+        uploaded_file = request.FILES.get('files') or request.FILES.get('document')
         
         if uploaded_file:
             # 使用AI分析服务处理文档
@@ -1839,7 +1858,9 @@ def analyze_content_view(request, project_id, analysis_type):
         else:
             messages.error(request, '请选择要分析的文件。')
     
-    return redirect('project_detail', project_id=project.project_id)
+    # 带上tab参数，确保返回后停留在正确的分析tab
+    base_url = reverse('project_detail', kwargs={'project_id': project.project_id})
+    return redirect(f'{base_url}?tab={tab_anchor}')
 
 def parse_metrics_analysis(analysis_text):
     """解析产出指标分析文本，提取指标项目"""
@@ -1953,7 +1974,14 @@ def edit_analysis_view(request, project_id, analysis_type):
         else:
             messages.error(request, '分析结果内容不能为空。')
     
-    return redirect('project_detail', project_id=project.project_id)
+    # 带上tab参数，确保返回后停留在正确的分析tab
+    tab_anchor_map = {
+        'research_content': 'content-analysis',
+        'output_metrics': 'metrics-analysis',
+    }
+    tab_anchor = tab_anchor_map.get(analysis_type, '')
+    base_url = reverse('project_detail', kwargs={'project_id': project.project_id})
+    return redirect(f'{base_url}?tab={tab_anchor}')
 
 
 def update_metrics_item_view(request, project_id, item_id):
@@ -2040,6 +2068,13 @@ def import_from_excel_view(request):
                                 except Exception:
                                     continue
                         
+                        # 归并历史状态，并拒绝五项之外的状态
+                        elif model_field == 'status':
+                            normalized_status = Project.normalize_status(value)
+                            if not normalized_status:
+                                continue
+                            model_data[model_field] = normalized_status
+
                         # 处理预算字段
                         elif model_field in ['total_budget', 'external_funding', 'institute_funding', 'unit_funding']:
                             if isinstance(value, (int, float)) and value > 0:
@@ -2224,7 +2259,7 @@ def statistics_view(request):
     ).order_by('-total_budget_sum'))
 
     total_projects = filtered_queryset.count()
-    completed_projects = filtered_queryset.filter(status__in=['未立项', '结题', '终止']).count()
+    completed_projects = filtered_queryset.filter(status__in=['结题', '终止']).count()
     ongoing_projects = total_projects - completed_projects
 
     distinct_years = base_queryset.values_list('start_year', flat=True).distinct().order_by('-start_year')
@@ -2453,7 +2488,7 @@ def test_api_connection(service_name, api_key):
                 'Authorization': f'Bearer {api_key}'
             }
             payload = {
-                'model': 'deepseek-chat',
+                'model': 'deepseek-v4-flash',
                 'messages': [{'role': 'user', 'content': 'Hello'}],
                 'max_tokens': 10
             }
@@ -2563,6 +2598,7 @@ def get_network_config():
         'network_share_path': '',  # 网络共享路径，如 \\192.168.1.100\projects
         'enable_network_share': False,  # 是否启用网络共享路径
         'enable_web_file_trial': True,  # 是否启用 Web 文件管理试用入口
+        'readonly_can_download': False,  # 是否允许只读用户下载课题文件
     }
     
     if config_file.exists():
@@ -2581,6 +2617,95 @@ def save_network_config(config):
     with open(config_file, 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
 
+
+def user_management_view(request):
+    """简单账号管理：管理员或只读用户。"""
+    if not is_system_admin(request.user):
+        return HttpResponseForbidden('仅管理员可以管理用户。')
+
+    User = get_user_model()
+
+    if request.method == 'POST':
+        action = request.POST.get('action', '').strip()
+
+        if action == 'create':
+            username = request.POST.get('username', '').strip()
+            display_name = request.POST.get('display_name', '').strip()
+            role = request.POST.get('role', 'readonly')
+            password1 = request.POST.get('password1', '')
+            password2 = request.POST.get('password2', '')
+
+            if not username:
+                messages.error(request, '请输入用户名。')
+            elif User.objects.filter(username=username).exists():
+                messages.error(request, '该用户名已存在。')
+            elif password1 != password2:
+                messages.error(request, '两次输入的密码不一致。')
+            else:
+                candidate = User(username=username, first_name=display_name)
+                try:
+                    validate_password(password1, user=candidate)
+                    candidate.is_staff = role == 'admin'
+                    candidate.is_active = True
+                    candidate.set_password(password1)
+                    candidate.save()
+                    messages.success(request, f'用户 {username} 创建成功。')
+                except ValidationError as exc:
+                    messages.error(request, ' '.join(exc.messages))
+
+        elif action == 'update':
+            target = get_object_or_404(User, pk=request.POST.get('user_id'))
+            username = request.POST.get('username', '').strip()
+            display_name = request.POST.get('display_name', '').strip()
+            role = request.POST.get('role', 'readonly')
+            is_active = request.POST.get('is_active') == 'on'
+            wants_admin = role == 'admin' or target.is_superuser
+            admin_count = User.objects.filter(is_active=True).filter(Q(is_staff=True) | Q(is_superuser=True)).count()
+
+            if not username:
+                messages.error(request, '用户名不能为空。')
+            elif User.objects.exclude(pk=target.pk).filter(username=username).exists():
+                messages.error(request, '该用户名已被其他账号使用。')
+            elif target.pk == request.user.pk and (not is_active or not wants_admin):
+                messages.error(request, '不能停用或降级当前登录的管理员账号。')
+            elif is_system_admin(target) and target.is_active and (not is_active or not wants_admin) and admin_count <= 1:
+                messages.error(request, '系统至少需要保留一个启用的管理员账号。')
+            else:
+                target.username = username
+                target.first_name = display_name
+                target.is_staff = wants_admin
+                target.is_active = is_active
+                target.save(update_fields=['username', 'first_name', 'is_staff', 'is_active'])
+                messages.success(request, f'用户 {username} 已更新。')
+
+        elif action == 'reset_password':
+            target = get_object_or_404(User, pk=request.POST.get('user_id'))
+            password1 = request.POST.get('password1', '')
+            password2 = request.POST.get('password2', '')
+            if password1 != password2:
+                messages.error(request, '两次输入的密码不一致。')
+            else:
+                try:
+                    validate_password(password1, user=target)
+                    target.set_password(password1)
+                    target.save(update_fields=['password'])
+                    if target.pk == request.user.pk:
+                        update_session_auth_hash(request, target)
+                    messages.success(request, f'用户 {target.username} 的密码已重置。')
+                except ValidationError as exc:
+                    messages.error(request, ' '.join(exc.messages))
+        else:
+            messages.error(request, '无效的用户管理操作。')
+
+        return redirect('user_management')
+
+    users = User.objects.all().order_by('-is_superuser', '-is_staff', 'username')
+    operation_logs = OperationLog.objects.select_related('user').all()[:100]
+    return render(request, 'core/user_management.html', {
+        'users': users,
+        'operation_logs': operation_logs,
+    })
+
 def settings_view(request):
     """系统设置页面"""
     network_config = get_network_config()
@@ -2588,7 +2713,29 @@ def settings_view(request):
     if request.method == 'POST':
         action = request.POST.get('action', 'save_path')
         
-        if action == 'save_network':
+        if action == 'save_backup_schedule':
+            backup_interval_days = request.POST.get('backup_interval_days', '').strip()
+            backup_time = request.POST.get('backup_time', '').strip()
+            try:
+                updated_schedule = backup_scheduler.update_backup_schedule(backup_interval_days, backup_time)
+                messages.success(
+                    request,
+                    f'自动备份计划已调整为每隔 {int(backup_interval_days)} 天的 {backup_time}。',
+                )
+                if not updated_schedule.get('available'):
+                    messages.warning(request, '时间已保存，但暂时无法重新读取计划任务状态，请稍后刷新确认。')
+                return redirect('settings')
+            except backup_scheduler.BackupScheduleError as exc:
+                messages.error(request, str(exc))
+        elif action == 'save_readonly_permissions':
+            network_config['readonly_can_download'] = request.POST.get('readonly_can_download') == 'on'
+            save_network_config(network_config)
+            if network_config['readonly_can_download']:
+                messages.success(request, '已允许只读用户下载课题文件。')
+            else:
+                messages.info(request, '已禁止只读用户下载课题文件。')
+            return redirect('settings')
+        elif action == 'save_network':
             # 保存网络共享配置
             network_share_path = request.POST.get('network_share_path', '').strip()
             enable_network_share = request.POST.get('enable_network_share') == 'on'
@@ -2694,6 +2841,7 @@ def settings_view(request):
     # 获取当前配置的项目路径
     current_projects_root = str(settings.PROJECTS_ROOT)
     network_config = get_network_config()  # 重新获取最新配置
+    backup_schedule = backup_scheduler.get_backup_schedule()
     projects = Project.objects.all().order_by('project_id')
     
     context = {
@@ -2701,6 +2849,8 @@ def settings_view(request):
         'network_share_path': network_config.get('network_share_path', ''),
         'enable_network_share': network_config.get('enable_network_share', False),
         'enable_web_file_trial': network_config.get('enable_web_file_trial', True),
+        'readonly_can_download': network_config.get('readonly_can_download', False),
+        'backup_schedule': backup_schedule,
         'projects': projects,
     }
     

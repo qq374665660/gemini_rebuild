@@ -13,10 +13,12 @@
                 {% endif %}
             </span>
             <div class="actions">
-                <a href="#" onclick="setUploadTarget('{{ node.path }}', '{{ node.name }}'); return false;" title="上传文件到此文件夹">📤</a>
-                <a href="#" onclick="setUploadTarget('{{ node.path }}', '{{ node.name }}'); return false;" title="在此文件夹中创建子文件夹">📁+</a>
-                {% if not node.name|slice:":2" == "01" and not node.name|slice:":2" == "02" and not node.name|slice:":2" == "03" and not node.name|slice:":2" == "04" and not node.name|slice:":2" == "05" and not node.name|slice:":2" == "06" %}
-                    <a href="{% url 'file_action' project.project_id 'delete' %}?path={{ node.path }}" class="delete" onclick="return confirm('确定要删除整个文件夹及其所有内容吗？');" title="删除文件夹">🗑️</a>
+                {% if is_system_admin %}
+                    <a href="#" onclick="setUploadTarget('{{ node.path }}', '{{ node.name }}'); return false;" title="上传文件到此文件夹">📤</a>
+                    <a href="#" onclick="setUploadTarget('{{ node.path }}', '{{ node.name }}'); return false;" title="在此文件夹中创建子文件夹">📁+</a>
+                    {% if not node.name|slice:":2" == "01" and not node.name|slice:":2" == "02" and not node.name|slice:":2" == "03" and not node.name|slice:":2" == "04" and not node.name|slice:":2" == "05" and not node.name|slice:":2" == "06" %}
+                        <a href="{% url 'file_action' project.project_id 'delete' %}?path={{ node.path }}" class="delete" onclick="return confirm('确定要删除整个文件夹及其所有内容吗？');" title="删除文件夹">🗑️</a>
+                    {% endif %}
                 {% endif %}
             </div>
         {% else %}
@@ -28,8 +30,8 @@
             </span>
             <div class="actions">
                 <a href="{% url 'file_action' project.project_id 'preview' %}?path={{ node.path }}" target="_blank" title="预览文件">👁️</a>
-                <a href="{% url 'file_action' project.project_id 'download' %}?path={{ node.path }}" title="下载文件">⬇️</a>
-                <a href="{% url 'file_action' project.project_id 'delete' %}?path={{ node.path }}" class="delete" onclick="return confirm('确定要删除这个文件吗？');" title="删除文件">🗑️</a>
+                {% if can_download_files %}<a href="{% url 'file_action' project.project_id 'download' %}?path={{ node.path }}" title="下载文件">⬇️</a>{% endif %}
+                {% if is_system_admin %}<a href="{% url 'file_action' project.project_id 'delete' %}?path={{ node.path }}" class="delete" onclick="return confirm('确定要删除这个文件吗？');" title="删除文件">🗑️</a>{% endif %}
             </div>
         {% endif %}
     </div>

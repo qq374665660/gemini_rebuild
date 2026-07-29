@@ -2,17 +2,6 @@ from django import forms
 from decimal import Decimal
 from .models import Project, ProjectAnalysis
 
-PROJECT_STATUS_CHOICES = [
-    ('未立项', '未立项'),
-    ('申报', '申报'),
-    ('立项', '立项'),
-    ('已立项', '已立项'),
-    ('在研', '在研'),
-    ('延期', '延期'),
-    ('结题', '结题'),
-    ('终止', '终止'),
-]
-
 class ProjectForm(forms.ModelForm):
     # 添加自定义的研究内容字段，支持手动编辑
     research_content_manual = forms.CharField(
@@ -41,23 +30,7 @@ class ProjectForm(forms.ModelForm):
             if field_name in self.fields:
                 self.fields[field_name].widget = forms.DateInput(attrs={'type': 'date'})
         if 'status' in self.fields:
-            status_choices = list(PROJECT_STATUS_CHOICES)
-            status_values = {value for value, _ in status_choices}
-            try:
-                existing_statuses = (
-                    Project.objects.values_list('status', flat=True)
-                    .distinct()
-                    .order_by('status')
-                )
-                for status in existing_statuses:
-                    if status and status not in status_values:
-                        status_choices.append((status, status))
-                        status_values.add(status)
-            except Exception:
-                pass
-            if getattr(self.instance, 'status', None) and self.instance.status not in status_values:
-                status_choices.append((self.instance.status, self.instance.status))
-            status_choices = [('', '未选择')] + status_choices
+            status_choices = [('', '未选择')] + list(Project.STATUS_CHOICES)
             self.fields['status'].widget = forms.Select(choices=status_choices)
             self.fields['status'].choices = status_choices
 

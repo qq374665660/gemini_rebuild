@@ -278,7 +278,7 @@
                                 </h1>
                                 <p class="page-subtitle">管理和跟踪科研课题的全生命周期</p>
                             </div>
-                            <div class="page-actions">
+                            {% if is_system_admin %}<div class="page-actions">
                                 <button class="btn btn-secondary" id="export-btn">
                                     <i class="fas fa-download"></i>
                                     导出课题清单
@@ -291,7 +291,7 @@
                                     <i class="fas fa-plus"></i>
                                     新建课题
                                 </a>
-                            </div>
+                            </div>{% endif %}
                         </div>
                     </div>
                 </div>
@@ -349,13 +349,13 @@
                                     筛选和搜索
                                 </h3>
                                 <div class="content-section-actions">
-                                    <button class="btn btn-text" id="toggle-filters">
-                                        <i class="fas fa-chevron-up"></i>
-                                        收起
+                                    <button class="btn btn-text" id="toggle-filters" type="button" aria-expanded="false">
+                                        <i class="fas fa-chevron-down"></i>
+                                        展开
                                     </button>
                                 </div>
                             </div>
-                            <div class="content-section-body" id="filter-section">
+                            <div class="content-section-body" id="filter-section" style="display: none;">
                                 <div class="filter-panel">
                                     <div class="filter-panel-head">
                                         <div>
@@ -579,7 +579,8 @@
                                                     <th class="col-level">级别</th>
                                                     <th>年份</th>
                                                     <th class="col-status">状态</th>
-                                                    <th class="col-budget">预算</th>
+                                                    <th class="col-budget">总预算</th>
+                                                    <th class="col-budget">专项预算</th>
                                                     <th>操作</th>
                                                 </tr>
                                             </thead>
@@ -612,14 +613,34 @@
                                                             <span class="text-muted">-</span>
                                                         {% endif %}
                                                     </td>
+                                                    <td class="col-budget">
+                                                        <div>
+                                                            <span class="text-muted">外部：</span>
+                                                            {% if project.external_funding is not None %}
+                                                                <strong>{{ project.external_funding|floatformat:1 }}万</strong>
+                                                            {% else %}
+                                                                <span class="text-muted">-</span>
+                                                            {% endif %}
+                                                        </div>
+                                                        <div>
+                                                            <span class="text-muted">院：</span>
+                                                            {% if project.institute_funding is not None %}
+                                                                <strong>{{ project.institute_funding|floatformat:1 }}万</strong>
+                                                            {% else %}
+                                                                <span class="text-muted">-</span>
+                                                            {% endif %}
+                                                        </div>
+                                                    </td>
                                                     <td>
                                                         <div class="d-flex gap-xs">
                                                             <a href="{% url 'project_detail' project.project_id %}" class="btn btn-sm btn-primary" title="查看详情">
                                                                 <i class="fas fa-eye"></i>
                                                             </a>
-                                                            <button class="btn btn-sm btn-danger" onclick="confirmDelete('{{ project.project_id }}', '{{ project.name }}')" title="删除课题">
-                                                                <i class="fas fa-trash"></i>
-                                                            </button>
+                                                            {% if is_system_admin %}
+                                                                <button class="btn btn-sm btn-danger" onclick="confirmDelete('{{ project.project_id }}', '{{ project.name }}')" title="删除课题">
+                                                                    <i class="fas fa-trash"></i>
+                                                                </button>
+                                                            {% endif %}
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -693,10 +714,12 @@
                                                 <i class="fas fa-undo"></i>
                                                 清除筛选
                                             </a>
-                                            <a href="{% url 'create_project' %}" class="btn btn-primary">
-                                                <i class="fas fa-plus"></i>
-                                                创建课题
-                                            </a>
+                                            {% if is_system_admin %}
+                                                <a href="{% url 'create_project' %}" class="btn btn-primary">
+                                                    <i class="fas fa-plus"></i>
+                                                    创建课题
+                                                </a>
+                                            {% endif %}
                                         </div>
                                     </div>
                                 {% endif %}
@@ -708,12 +731,15 @@
         </main>
     </div>
     
-    <!-- 隐藏的文件上传表单 -->
-    <form method="post" action="{% url 'import_from_excel' %}" enctype="multipart/form-data" id="excel-form" style="display: none;">
-        {% csrf_token %}
-        <input type="file" name="excel_file" required accept=".xlsx, .xls" id="excel_upload">
-    </form>
+    {% if is_system_admin %}
+        <!-- 隐藏的文件上传表单 -->
+        <form method="post" action="{% url 'import_from_excel' %}" enctype="multipart/form-data" id="excel-form" style="display: none;">
+            {% csrf_token %}
+            <input type="file" name="excel_file" required accept=".xlsx, .xls" id="excel_upload">
+        </form>
+    {% endif %}
     <script>
+        {% if is_system_admin %}
         const exportButton = document.getElementById('export-btn');
         if (exportButton) {
             exportButton.addEventListener('click', function() {
@@ -733,6 +759,7 @@
                 document.getElementById('excel-form').submit();
             }
         });
+        {% endif %}
         
         // 视图切换功能
         document.getElementById('view-toggle').addEventListener('click', function() {
@@ -756,15 +783,14 @@
         // 筛选区域折叠功能
         document.getElementById('toggle-filters').addEventListener('click', function() {
             const filterSection = document.getElementById('filter-section');
-            const icon = this.querySelector('i');
             
             if (filterSection.style.display === 'none') {
                 filterSection.style.display = 'block';
-                icon.className = 'fas fa-chevron-up';
+                this.setAttribute('aria-expanded', 'true');
                 this.innerHTML = '<i class="fas fa-chevron-up"></i> 收起';
             } else {
                 filterSection.style.display = 'none';
-                icon.className = 'fas fa-chevron-down';
+                this.setAttribute('aria-expanded', 'false');
                 this.innerHTML = '<i class="fas fa-chevron-down"></i> 展开';
             }
         });

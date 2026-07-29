@@ -49,6 +49,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.middleware.AccessControlMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -66,6 +67,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'core.context_processors.access_control',
             ],
         },
     },
@@ -130,12 +132,25 @@ WHITENOISE_USE_FINDERS = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/login/'
+SESSION_COOKIE_AGE = 8 * 60 * 60
+SESSION_SAVE_EVERY_REQUEST = True
+
 # 项目文件夹路径配置
 # 您可以修改此路径来改变项目文件的存储位置
 PROJECTS_ROOT = BASE_DIR / 'projects'  # 默认为当前目录下的projects文件夹
 # 示例：如果要改为其他路径，可以这样设置：
 # PROJECTS_ROOT = Path('D:/my_projects')  # Windows路径示例
 # PROJECTS_ROOT = Path('/home/user/my_projects')  # Linux路径示例
+
+# Windows 自动备份计划任务。系统设置页只允许修改该任务的执行间隔和时间，
+# 不会更改备份脚本、备份目录、运行账户或其他任务参数。
+BACKUP_TASK_NAME = os.getenv('BACKUP_TASK_NAME', r'\KetiBackupWeekly')
+BACKUP_SCHEDULE_READ_ONLY = os.getenv('BACKUP_SCHEDULE_READ_ONLY', '').strip().lower() in {
+    '1', 'true', 'yes', 'on'
+}
 
 # AI Analysis API Configuration
 # 请在这里配置您的API密钥

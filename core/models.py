@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from cryptography.fernet import Fernet
 import base64
@@ -22,7 +23,12 @@ class Project(models.Model):
     
     managing_unit = models.CharField(max_length=100, blank=True, verbose_name="归口单位")
 
-    LEVEL_CHOICES = [('国家级', '国家级'), ('省部级', '省部级'), ('公司级', '公司级')]
+    LEVEL_CHOICES = [
+        ('国家级', '国家级'),
+        ('省部级', '省部级'),
+        ('地市级', '地市级'),
+        ('公司级', '公司级'),
+    ]
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES, verbose_name="课题级别")
 
     TYPE_CHOICES = [('应用研究', '应用研究'), ('试验发展', '试验发展'), ('全自筹课题', '全自筹课题')]
@@ -31,9 +37,26 @@ class Project(models.Model):
     ROLE_CHOICES = [('牵头', '牵头'), ('参与', '参与')]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, verbose_name="参与角色")
 
+    STATUS_CHOICES = [
+        ('申报', '申报'),
+        ('在研', '在研'),
+        ('延期', '延期'),
+        ('结题', '结题'),
+        ('终止', '终止'),
+    ]
+    STATUS_ALIASES = {
+        '未立项': '申报',
+        '立项': '在研',
+        '已立项': '在研',
+        '进行中': '在研',
+        '执行中': '在研',
+        '完成': '结题',
+        '已完成': '结题',
+    }
+
     # 时间与状态
     start_year = models.IntegerField(verbose_name="开始年份", db_index=True)
-    status = models.CharField(max_length=50, verbose_name="课题状态", db_index=True)
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, verbose_name="课题状态", db_index=True)
     contact_person = models.CharField(max_length=50, blank=True, verbose_name="课题联系人")
     project_lead = models.CharField(max_length=50, blank=True, verbose_name="课题负责人")
     start_date = models.DateField(null=True, blank=True, verbose_name="开始日期")
@@ -57,6 +80,14 @@ class Project(models.Model):
     # 自动维护字段
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @classmethod
+    def normalize_status(cls, value):
+        """将历史状态归并为当前允许的五种状态。"""
+        status = str(value or '').strip()
+        status = cls.STATUS_ALIASES.get(status, status)
+        valid_statuses = {choice[0] for choice in cls.STATUS_CHOICES}
+        return status if status in valid_statuses else ''
 
     def __str__(self):
         return self.name
@@ -348,3 +379,31 @@ class APIConfig(models.Model):
         verbose_name = "AI API配置"
         verbose_name_plural = "AI API配置"
         ordering = ['service_name']
+
+
+class OperationLog(models.Model):
+    """记录登录用户对系统执行的写入及敏感下载操作。"""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='research_operation_logs',
+        verbose_name='操作用户',
+    )
+    username = models.CharField(max_length=150, blank=True, verbose_name='用户名快照')
+    method = models.CharField(max_length=10, verbose_name='请求方法')
+    path = models.CharField(max_length=500, verbose_name='请求路径')
+    action_name = models.CharField(max_length=100, blank=True, verbose_name='操作名称')
+    status_code = models.PositiveSmallIntegerField(verbose_name='响应状态码')
+    ip_address = models.GenericIPAddressField(null=True, blank=True, verbose_name='IP地址')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='操作时间')
+
+    class Meta:
+        verbose_name = '操作日志'
+        verbose_name_plural = '操作日志'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.username or "未知用户"} {self.method} {self.path}'
