@@ -17,6 +17,16 @@ class ProjectForm(forms.ModelForm):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if 'funding_category' in self.fields:
+            self.fields['funding_category'].choices = list(Project.FUNDING_CATEGORY_CHOICES)
+            self.fields['funding_category'].required = not bool(self.instance and self.instance.pk)
+            if not self.is_bound and not self.instance.pk:
+                self.fields['funding_category'].initial = 'special'
+        if 'project_type' in self.fields:
+            # “全自筹课题”由经费管理类别承载，保留旧值仅用于兼容历史导入。
+            self.fields['project_type'].choices = [
+                choice for choice in Project.TYPE_CHOICES if choice[0] != '全自筹课题'
+            ]
         # 如果存在实例，初始化手动编辑字段
         if self.instance and self.instance.pk:
             self.fields['research_content_manual'].initial = self.instance.research_content

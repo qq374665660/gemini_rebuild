@@ -7,7 +7,7 @@
     <title>登录 - 科研课题管理系统</title>
     <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
     <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'core/vendor/fontawesome/css/all.min.css' %}?v=6.0.0">
     <style>
         body { min-height: 100vh; background: linear-gradient(135deg, #eff6ff, #f8fafc); }
         .login-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
@@ -17,10 +17,15 @@
         .login-brand h1 { margin: 0; font-size: 24px; }
         .login-brand p { color: var(--text-secondary); margin: 8px 0 0; }
         .login-form p { margin-bottom: 18px; }
+        .login-field { margin-bottom: 18px; }
         .login-form label { display: block; margin-bottom: 6px; font-weight: 600; }
         .login-form input { width: 100%; padding: 11px 12px; border: 1px solid var(--border-light); border-radius: 10px; box-sizing: border-box; }
         .login-form .btn { width: 100%; justify-content: center; }
-        .errorlist { color: var(--danger-color); padding-left: 18px; }
+        .password-input-wrap { position: relative; }
+        .password-input-wrap input { padding-right: 64px; }
+        .password-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; color: var(--primary-color); padding: 6px 8px; cursor: pointer; font-weight: 600; }
+        .login-help { margin-top: 6px; color: var(--text-tertiary); font-size: var(--font-size-sm); }
+        .errorlist { color: var(--error-color); padding-left: 18px; }
     </style>
 </head>
 <body>
@@ -36,7 +41,24 @@
             {% endif %}
             <form method="post" class="login-form">
                 {% csrf_token %}
-                {{ form.as_p }}
+                <div class="login-field">
+                    <label for="id_username">用户名</label>
+                    <input type="text" name="username" id="id_username"
+                           value="{{ form.username.value|default_if_none:'' }}"
+                           autocomplete="username" maxlength="150" autofocus required
+                           placeholder="请输入用户名">
+                    {% if form.username.errors %}<div class="errorlist">{{ form.username.errors }}</div>{% endif %}
+                </div>
+                <div class="login-field">
+                    <label for="id_password">密码</label>
+                    <div class="password-input-wrap">
+                        <input type="password" name="password" id="id_password"
+                               autocomplete="current-password" required placeholder="请输入密码">
+                        <button type="button" class="password-toggle" id="password-toggle"
+                                aria-controls="id_password" aria-pressed="false">显示</button>
+                    </div>
+                    {% if form.password.errors %}<div class="errorlist">{{ form.password.errors }}</div>{% endif %}
+                </div>
                 {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
                 <button type="submit" class="btn btn-primary">
                     <i class="fas fa-right-to-bracket"></i> 登录
@@ -44,5 +66,18 @@
             </form>
         </section>
     </main>
+    <script>
+        (() => {
+            const toggle = document.getElementById('password-toggle');
+            const password = document.getElementById('id_password');
+            if (!toggle || !password) return;
+            toggle.addEventListener('click', () => {
+                const showPassword = password.type === 'password';
+                password.type = showPassword ? 'text' : 'password';
+                toggle.textContent = showPassword ? '隐藏' : '显示';
+                toggle.setAttribute('aria-pressed', String(showPassword));
+            });
+        })();
+    </script>
 </body>
 </html>

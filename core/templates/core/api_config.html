@@ -6,10 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI API配置管理 - 科研课题管理系统</title>
     <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
-    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=3.0">
     <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
     <link rel="stylesheet" href="{% static 'core/css/components.css' %}?v=2.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'core/vendor/fontawesome/css/all.min.css' %}?v=6.0.0">
 </head>
 <body>
     <div class="app-layout">
@@ -20,12 +20,12 @@
         <div class="app-main">
             <div class="app-content">
                 <div class="container">
-                    <main class="main-content">
+                    <main class="main-content api-config-page">
             <!-- Page Header -->
-            <div class="page-header">
-                <div class="page-title">
+            <div class="page-header api-page-header">
+                <div class="page-title api-page-title">
                     <h1><i class="fas fa-cog"></i> AI API配置管理</h1>
-                    <p>配置和管理AI分析服务</p>
+                    <p>统一配置智能助手、研究内容分析和指标分析使用的大模型</p>
                 </div>
                 <div class="page-actions">
                     <a href="{% url 'project_list' %}" class="btn btn-outline">
@@ -34,6 +34,7 @@
                     </a>
                 </div>
             </div>
+            {% include 'core/partials/system_config_nav.html' %}
         
             <!-- 消息显示 -->
             {% if messages %}
@@ -57,11 +58,12 @@
                 {% endfor %}
             {% endif %}
             
+            <div class="api-setup-grid">
             <!-- API服务信息 -->
-            <div class="content-section">
+            <section class="content-section api-service-guide">
                 <div class="section-header">
                     <h2><i class="fas fa-info-circle"></i> 支持的AI服务</h2>
-                    <p>配置AI分析服务以启用智能文档分析功能</p>
+                    <p>支持云端模型和 OpenAI 兼容的内网本地模型</p>
                 </div>
                 <div class="alert alert-info">
                     <div class="alert-icon">
@@ -72,14 +74,15 @@
                         <ul>
                             <li><strong>DeepSeek:</strong> 专业的AI模型，适合复杂文档分析。获取API密钥：<a href="https://platform.deepseek.com/" target="_blank">https://platform.deepseek.com/</a></li>
                             <li><strong>Kimi (Moonshot):</strong> 中文理解能力强，适合中文科研文档。获取API密钥：<a href="https://platform.moonshot.cn/" target="_blank">https://platform.moonshot.cn/</a></li>
-                            <li><strong>注意：</strong> API密钥将被加密存储，系统优先使用DeepSeek，失败时自动切换到Kimi。</li>
+                            <li><strong>本地模型:</strong> 已预置内网服务 <code>http://192.168.0.182:8000</code>，默认模型为 <code>XKY-AI</code>，无需API密钥。</li>
+                            <li><strong>使用方式：</strong> 配置并测试通过后，可在智能助手、研究内容分析和指标分析中直接选择模型。</li>
                         </ul>
                     </div>
                 </div>
-            </div>
+            </section>
         
             <!-- 新增配置表单 -->
-            <div class="content-section">
+            <section class="content-section api-config-form">
                 <div class="section-header">
                     <h2><i class="fas fa-plus-circle"></i> 添加/更新API配置</h2>
                     <p>配置新的AI服务或更新现有配置</p>
@@ -89,7 +92,7 @@
                         <form method="post">
                             {% csrf_token %}
                             <div class="row">
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <div class="form-group">
                                         <label for="service_name"><i class="fas fa-robot"></i> AI服务</label>
                                         <select name="service_name" id="service_name" class="form-control" required>
@@ -101,11 +104,24 @@
                                         <div class="service-description" id="service-description" style="display: none; margin-top: 8px; padding: 8px; background: var(--bg-tertiary); border-radius: var(--radius-sm); font-size: 14px; color: var(--text-tertiary);"></div>
                                     </div>
                                 </div>
+                                <div class="col-md-8">
+                                    <div class="form-group">
+                                        <label for="base_url"><i class="fas fa-link"></i> 服务地址</label>
+                                        <input type="url" name="base_url" id="base_url" class="form-control" placeholder="http://192.168.0.182:8000" required>
+                                        <small class="form-text text-muted">可填写根地址、/v1 地址或完整 chat/completions 地址</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="model_name"><i class="fas fa-microchip"></i> 模型名称</label>
+                                        <input type="text" name="model_name" id="model_name" class="form-control" placeholder="XKY-AI" required>
+                                    </div>
+                                </div>
                                 <div class="col-md-6">
                                     <div class="form-group">
                                         <label for="api_key"><i class="fas fa-key"></i> API密钥</label>
-                                        <input type="password" name="api_key" id="api_key" class="form-control" placeholder="sk-xxxxxxxxxxxxxxxx" required>
-                                        <small class="form-text text-muted">API密钥将被加密存储</small>
+                                        <input type="password" name="api_key" id="api_key" class="form-control" placeholder="云端模型填写；本地模型可留空">
+                                        <small class="form-text text-muted">云端密钥加密存储；更新云端配置时留空可保留原密钥</small>
                                     </div>
                                 </div>
                             </div>
@@ -118,10 +134,11 @@
                         </form>
                     </div>
                 </div>
+            </section>
             </div>
         
             <!-- 现有配置列表 -->
-            <div class="content-section">
+            <section class="content-section api-config-list">
                 <div class="section-header">
                     <h2><i class="fas fa-list"></i> 已配置的API服务</h2>
                     <p>管理现有的AI服务配置</p>
@@ -161,6 +178,14 @@
                                     </div>
                                     <div class="card-body">
                                         <div class="config-meta">
+                                            <div class="meta-item">
+                                                <i class="fas fa-link"></i>
+                                                <span>服务地址：{{ config.base_url|default:"使用系统默认地址" }}</span>
+                                            </div>
+                                            <div class="meta-item">
+                                                <i class="fas fa-microchip"></i>
+                                                <span>模型名称：{{ config.model_name|default:"使用系统默认模型" }}</span>
+                                            </div>
                                             <div class="meta-item">
                                                 <i class="fas fa-calendar-plus"></i>
                                                 <span>创建时间：{{ config.created_at|date:"Y-m-d H:i" }}</span>
@@ -228,10 +253,10 @@
                         </div>
                     </div>
                 {% endif %}
-            </div>
+            </section>
         
             <!-- 使用说明 -->
-            <div class="content-section">
+            <section class="content-section api-instructions">
                 <div class="section-header">
                     <h2><i class="fas fa-book"></i> 使用说明</h2>
                     <p>了解如何配置和使用AI服务</p>
@@ -246,7 +271,8 @@
                             <div class="card-body">
                                 <ol class="instruction-list">
                                     <li>选择要配置的AI服务类型</li>
-                                    <li>输入对应的API密钥</li>
+                                    <li>确认服务地址和模型名称</li>
+                                    <li>云端服务输入API密钥，本地模型可留空</li>
                                     <li>点击"保存配置"按钮</li>
                                     <li>使用"测试连接"验证配置是否正确</li>
                                     <li>启用服务开始使用AI分析功能</li>
@@ -264,8 +290,9 @@
                                 <ul class="instruction-list">
                                     <li>API密钥将被安全加密存储</li>
                                     <li>建议定期测试连接以确保服务可用</li>
-                                    <li>同一服务类型只能配置一个API密钥</li>
+                                    <li>同一服务类型保存一套模型配置</li>
                                     <li>禁用的服务不会被用于AI分析</li>
+                                    <li>只有连接测试通过的配置才会出现在模型选择器中</li>
                                 </ul>
                             </div>
                         </div>
@@ -294,11 +321,17 @@
                                             获取密钥
                                         </a>
                                     </div>
+                                    <div class="api-link-item">
+                                        <i class="fas fa-server"></i>
+                                        <strong>本地模型:</strong>
+                                        <span>内网部署，无需外部密钥</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </section>
                     </main>
                 </div>
             </div>
@@ -313,13 +346,23 @@
             
             const descriptions = {
                 'deepseek': '🤖 DeepSeek是一个强大的AI模型，擅长代码分析和技术文档理解。',
-                'kimi': '🌙 Kimi是月之暗面开发的AI助手，具有超长上下文处理能力。'
+                'kimi': '🌙 Kimi是月之暗面开发的AI助手，具有超长上下文处理能力。',
+                'local': '🖥️ 本地模型运行在内网，数据不离开本地网络，当前服务模型为 XKY-AI。'
             };
+            const defaults = {{ service_defaults_json|safe }};
             
             const selectedService = serviceSelect.value;
             if (selectedService && descriptions[selectedService]) {
                 descriptionDiv.innerHTML = descriptions[selectedService];
                 descriptionDiv.style.display = 'block';
+                const selectedDefaults = defaults[selectedService] || {};
+                document.getElementById('base_url').value = selectedDefaults.base_url || '';
+                document.getElementById('model_name').value = selectedDefaults.model || '';
+                const apiKeyInput = document.getElementById('api_key');
+                apiKeyInput.required = false;
+                apiKeyInput.placeholder = selectedService === 'local'
+                    ? '本地模型无鉴权时可留空'
+                    : 'sk-xxxxxxxxxxxxxxxx（更新时可留空）';
             } else {
                 descriptionDiv.style.display = 'none';
             }
@@ -379,7 +422,250 @@
     </script>
     
     <style>
-        /* 额外样式 */
+        .api-config-page {
+            width: 100%;
+            padding: 30px 0 56px;
+        }
+
+        .api-page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            margin: 0 0 28px !important;
+            padding: 28px 30px;
+            border: 1px solid var(--border-light);
+            border-radius: 20px;
+            background: linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%);
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
+        }
+
+        .api-page-header::after {
+            right: -70px;
+            top: -110px;
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            background: rgba(37, 99, 235, 0.07);
+        }
+
+        .api-page-title h1 {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 0;
+            color: var(--text-primary);
+            font-size: clamp(1.7rem, 2.2vw, 2.25rem);
+        }
+
+        .api-page-title h1 i {
+            display: grid;
+            place-items: center;
+            width: 46px;
+            height: 46px;
+            border-radius: 14px;
+            color: #fff;
+            background: var(--primary-color);
+            box-shadow: var(--shadow-primary);
+        }
+
+        .api-page-title p {
+            margin: 9px 0 0 58px;
+            color: var(--text-secondary);
+            font-size: var(--font-size-base);
+        }
+
+        .api-setup-grid {
+            display: grid;
+            grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+            gap: 24px;
+            margin-bottom: 24px;
+            align-items: stretch;
+        }
+
+        .api-config-page .content-section {
+            margin-bottom: 24px;
+            padding: 24px;
+            border-radius: 18px;
+            overflow: visible;
+        }
+
+        .api-setup-grid .content-section {
+            margin-bottom: 0;
+        }
+
+        .api-config-form {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .api-config-page .section-header {
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .api-config-page .section-header h2 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0;
+            color: var(--text-primary);
+            font-size: var(--font-size-xl);
+        }
+
+        .api-config-page .section-header h2 i {
+            color: var(--primary-color);
+        }
+
+        .api-config-page .section-header p {
+            margin: 6px 0 0;
+            color: var(--text-secondary);
+        }
+
+        .api-service-guide .alert {
+            height: calc(100% - 78px);
+            margin: 0;
+            padding: 20px;
+            border-radius: 14px;
+        }
+
+        .api-service-guide .alert-content ul {
+            display: grid;
+            gap: 12px;
+            margin: 12px 0 0;
+            padding-left: 20px;
+        }
+
+        .api-service-guide a {
+            word-break: break-all;
+        }
+
+        .api-config-list .card,
+        .api-instructions .card {
+            height: 100%;
+            margin: 0;
+            border-color: var(--border-light);
+            box-shadow: none;
+        }
+
+        .api-config-form .card {
+            flex: 1 1 auto;
+            height: auto;
+            min-height: 0;
+            margin: 0;
+            border-color: var(--border-light);
+            box-shadow: none;
+        }
+
+        .api-config-form .card-body,
+        .api-config-form form {
+            height: 100%;
+        }
+
+        .api-config-form form {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .api-config-form .card-body {
+            padding: 22px;
+        }
+
+        .api-config-form .row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+            margin: 0;
+        }
+
+        .api-config-form .col-md-6,
+        .api-config-list .col-lg-6,
+        .api-instructions .col-lg-4 {
+            min-width: 0;
+            margin: 0;
+            padding: 0;
+        }
+
+        .api-config-form .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: auto;
+            padding-top: 18px;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .api-config-form .form-actions .btn {
+            min-width: 150px;
+        }
+
+        .api-config-list > .row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+            margin: 0;
+        }
+
+        .api-config-list .card {
+            display: flex;
+            flex-direction: column;
+            border-radius: 14px;
+        }
+
+        .api-config-list .card-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 18px 20px;
+        }
+
+        .api-config-list .card-header h4 {
+            margin: 0;
+        }
+
+        .api-config-list .card-header-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 6px;
+        }
+
+        .api-config-list .card-body {
+            flex: 1;
+            padding: 18px 20px;
+        }
+
+        .api-config-list .card-footer {
+            padding: 14px 20px;
+            background: var(--bg-secondary);
+        }
+
+        .api-instructions > .row {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 18px;
+            margin: 0;
+        }
+
+        .api-instructions .card-header {
+            padding: 16px 18px;
+            background: var(--bg-secondary);
+        }
+
+        .api-instructions .card-header h4 {
+            margin: 0;
+            font-size: var(--font-size-base);
+        }
+
+        .api-instructions .card-body {
+            padding: 18px;
+        }
+
         .config-meta .meta-item {
             display: flex;
             align-items: center;
@@ -453,6 +739,39 @@
         }
         
         @media (max-width: 768px) {
+            .api-config-page {
+                padding-top: 18px;
+            }
+
+            .api-page-header {
+                align-items: flex-start;
+                flex-direction: column;
+                padding: 22px 20px;
+            }
+
+            .api-page-title p {
+                margin-left: 0;
+            }
+
+            .api-setup-grid,
+            .api-config-form .row,
+            .api-config-list > .row,
+            .api-instructions > .row {
+                grid-template-columns: 1fr;
+            }
+
+            .api-config-page .content-section {
+                padding: 18px;
+            }
+
+            .api-config-list .card-header {
+                flex-direction: column;
+            }
+
+            .api-config-list .card-header-actions {
+                justify-content: flex-start;
+            }
+
             .btn-group {
                 flex-direction: column;
             }

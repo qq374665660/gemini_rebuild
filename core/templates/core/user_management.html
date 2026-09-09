@@ -1,52 +1,86 @@
-{% load static %}
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>用户管理 - 科研课题管理系统</title>
-    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
-    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
-    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        .user-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px}.user-card{border:1px solid var(--border-light);border-radius:14px;padding:18px;background:#fff}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.form-grid .full{grid-column:1/-1}.form-group label{display:block;font-weight:600;margin-bottom:5px}.form-control{width:100%;box-sizing:border-box}.inline-check{display:flex;align-items:center;gap:8px;margin-top:10px}.user-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}.log-table{font-size:13px}.muted{color:var(--text-secondary)}@media(max-width:640px){.form-grid{grid-template-columns:1fr}.form-grid .full{grid-column:auto}}
-    </style>
-</head>
-<body>
-<div class="app-layout">
-    {% include 'core/partials/navbar.html' %}
-    <main class="app-main"><div class="app-content">
-        <div class="page-header"><div class="container"><div class="page-header-content"><div><h1 class="page-title"><i class="fas fa-users-gear"></i> 用户管理</h1><p class="page-subtitle">仅设置管理员或只读用户</p></div></div></div></div>
-        <div class="page-body"><div class="container">
-            {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
-            <div class="content-section"><div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-user-plus"></i> 新建用户</h3></div><div class="content-section-body">
-                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="create"><div class="form-grid">
-                    <div class="form-group"><label>用户名</label><input class="form-control" name="username" required autocomplete="off"></div>
-                    <div class="form-group"><label>姓名</label><input class="form-control" name="display_name"></div>
-                    <div class="form-group"><label>角色</label><select class="form-control" name="role"><option value="readonly">只读用户</option><option value="admin">管理员</option></select></div>
-                    <div></div>
-                    <div class="form-group"><label>密码</label><input class="form-control" type="password" name="password1" required autocomplete="new-password"></div>
-                    <div class="form-group"><label>确认密码</label><input class="form-control" type="password" name="password2" required autocomplete="new-password"></div>
-                </div><div class="user-actions"><button class="btn btn-primary" type="submit">创建用户</button></div></form>
-            </div></div>
+{% extends 'core/base.html' %}
 
-            <div class="content-section"><div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-users"></i> 现有用户</h3></div><div class="content-section-body"><div class="user-grid">
-                {% for managed_user in users %}<article class="user-card">
-                    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="update"><input type="hidden" name="user_id" value="{{ managed_user.id }}"><div class="form-grid">
-                        <div class="form-group"><label>用户名</label><input class="form-control" name="username" value="{{ managed_user.username }}" required></div>
-                        <div class="form-group"><label>姓名</label><input class="form-control" name="display_name" value="{{ managed_user.first_name }}"></div>
-                        <div class="form-group"><label>角色</label><select class="form-control" name="role" {% if managed_user.is_superuser %}disabled{% endif %}><option value="readonly" {% if not managed_user.is_staff and not managed_user.is_superuser %}selected{% endif %}>只读用户</option><option value="admin" {% if managed_user.is_staff or managed_user.is_superuser %}selected{% endif %}>管理员</option></select>{% if managed_user.is_superuser %}<input type="hidden" name="role" value="admin">{% endif %}</div>
-                        <div class="form-group"><label>状态</label><label class="inline-check"><input type="checkbox" name="is_active" {% if managed_user.is_active %}checked{% endif %}> 启用账号</label></div>
-                    </div><div class="user-actions"><button class="btn btn-primary btn-sm" type="submit">保存资料</button>{% if managed_user.is_superuser %}<span class="muted">超级管理员</span>{% endif %}</div></form>
-                    <hr>
-                    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="reset_password"><input type="hidden" name="user_id" value="{{ managed_user.id }}"><div class="form-grid"><div class="form-group"><label>新密码</label><input class="form-control" type="password" name="password1" required autocomplete="new-password"></div><div class="form-group"><label>确认新密码</label><input class="form-control" type="password" name="password2" required autocomplete="new-password"></div></div><div class="user-actions"><button class="btn btn-secondary btn-sm" type="submit">重置密码</button></div></form>
-                </article>{% endfor %}
-            </div></div></div>
+{% block title %}用户管理 - 科研课题管理系统{% endblock %}
 
-            <div class="content-section"><div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-clipboard-list"></i> 最近操作日志</h3></div><div class="content-section-body"><div class="table-responsive"><table class="table log-table"><thead><tr><th>时间</th><th>用户</th><th>操作</th><th>路径</th><th>结果</th><th>IP</th></tr></thead><tbody>{% for log in operation_logs %}<tr><td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td><td>{{ log.username|default:"-" }}</td><td>{{ log.method }} {{ log.action_name }}</td><td>{{ log.path }}</td><td>{{ log.status_code }}</td><td>{{ log.ip_address|default:"-" }}</td></tr>{% empty %}<tr><td colspan="6" class="muted">暂无操作记录</td></tr>{% endfor %}</tbody></table></div></div></div>
-        </div></div>
-    </div></main>
-</div>
-</body>
-</html>
+{% block extra_head %}
+<style>
+    .user-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; }
+    .user-card { border: 1px solid var(--border-light); border-radius: 14px; padding: 18px; background: #fff; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-grid .full { grid-column: 1 / -1; }
+    .form-group label { display: block; font-weight: 600; margin-bottom: 5px; }
+    .form-control { width: 100%; box-sizing: border-box; }
+    .inline-check { display: flex !important; align-items: center; gap: 8px; margin-top: 10px; }
+    .user-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    .log-table { font-size: 13px; }
+    .muted { color: var(--text-secondary); }
+    .message-stack { margin-bottom: var(--spacing-lg); }
+    @media (max-width: 640px) {
+        .user-grid, .form-grid { grid-template-columns: 1fr; }
+        .form-grid .full { grid-column: auto; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    {% include 'core/partials/page_header.html' with page_title='用户管理' page_subtitle='仅设置管理员或只读用户' page_icon='fas fa-users-gear' %}
+    <div class="page-body">
+        <div class="container">
+            {% include 'core/partials/system_config_nav.html' %}
+            {% include 'core/partials/messages.html' %}
+
+            <section class="content-section">
+                <div class="content-section-header"><h2 class="content-section-title"><i class="fas fa-user-plus" aria-hidden="true"></i> 新建用户</h2></div>
+                <div class="content-section-body">
+                    <form method="post">
+                        {% csrf_token %}<input type="hidden" name="action" value="create">
+                        <div class="form-grid">
+                            <div class="form-group"><label for="create-username">用户名</label><input id="create-username" class="form-control" name="username" required autocomplete="off"></div>
+                            <div class="form-group"><label for="create-display-name">姓名</label><input id="create-display-name" class="form-control" name="display_name"></div>
+                            <div class="form-group"><label for="create-role">角色</label><select id="create-role" class="form-control" name="role"><option value="readonly">只读用户</option><option value="admin">管理员</option></select></div>
+                            <div aria-hidden="true"></div>
+                            <div class="form-group"><label for="create-password">密码</label><input id="create-password" class="form-control" type="password" name="password1" required autocomplete="new-password"></div>
+                            <div class="form-group"><label for="create-password-confirm">确认密码</label><input id="create-password-confirm" class="form-control" type="password" name="password2" required autocomplete="new-password"></div>
+                        </div>
+                        <div class="user-actions"><button class="btn btn-primary" type="submit"><i class="fas fa-user-plus" aria-hidden="true"></i> 创建用户</button></div>
+                    </form>
+                </div>
+            </section>
+
+            <section class="content-section">
+                <div class="content-section-header"><h2 class="content-section-title"><i class="fas fa-users" aria-hidden="true"></i> 现有用户</h2></div>
+                <div class="content-section-body">
+                    <div class="user-grid">
+                        {% for managed_user in users %}
+                        <article class="user-card">
+                            <form method="post">
+                                {% csrf_token %}<input type="hidden" name="action" value="update"><input type="hidden" name="user_id" value="{{ managed_user.id }}">
+                                <div class="form-grid">
+                                    <div class="form-group"><label for="username-{{ managed_user.id }}">用户名</label><input id="username-{{ managed_user.id }}" class="form-control" name="username" value="{{ managed_user.username }}" required></div>
+                                    <div class="form-group"><label for="display-name-{{ managed_user.id }}">姓名</label><input id="display-name-{{ managed_user.id }}" class="form-control" name="display_name" value="{{ managed_user.first_name }}"></div>
+                                    <div class="form-group"><label for="role-{{ managed_user.id }}">角色</label><select id="role-{{ managed_user.id }}" class="form-control" name="role" {% if managed_user.is_superuser %}disabled{% endif %}><option value="readonly" {% if not managed_user.is_staff and not managed_user.is_superuser %}selected{% endif %}>只读用户</option><option value="admin" {% if managed_user.is_staff or managed_user.is_superuser %}selected{% endif %}>管理员</option></select>{% if managed_user.is_superuser %}<input type="hidden" name="role" value="admin">{% endif %}</div>
+                                    <div class="form-group"><span class="form-label">状态</span><label class="inline-check" for="active-{{ managed_user.id }}"><input id="active-{{ managed_user.id }}" type="checkbox" name="is_active" {% if managed_user.is_active %}checked{% endif %}> 启用账号</label></div>
+                                </div>
+                                <div class="user-actions"><button class="btn btn-primary btn-sm" type="submit">保存资料</button>{% if managed_user.is_superuser %}<span class="muted">超级管理员</span>{% endif %}</div>
+                            </form>
+                            <hr>
+                            <form method="post">
+                                {% csrf_token %}<input type="hidden" name="action" value="reset_password"><input type="hidden" name="user_id" value="{{ managed_user.id }}">
+                                <div class="form-grid"><div class="form-group"><label for="new-password-{{ managed_user.id }}">新密码</label><input id="new-password-{{ managed_user.id }}" class="form-control" type="password" name="password1" required autocomplete="new-password"></div><div class="form-group"><label for="new-password-confirm-{{ managed_user.id }}">确认新密码</label><input id="new-password-confirm-{{ managed_user.id }}" class="form-control" type="password" name="password2" required autocomplete="new-password"></div></div>
+                                <div class="user-actions"><button class="btn btn-secondary btn-sm" type="submit">重置密码</button></div>
+                            </form>
+                        </article>
+                        {% endfor %}
+                    </div>
+                </div>
+            </section>
+
+            <section class="content-section">
+                <div class="content-section-header"><h2 class="content-section-title"><i class="fas fa-clipboard-list" aria-hidden="true"></i> 最近操作日志</h2></div>
+                <div class="content-section-body">
+                    <div class="table-responsive"><table class="table log-table"><thead><tr><th>时间</th><th>用户</th><th>操作</th><th>路径</th><th>结果</th><th>IP</th></tr></thead><tbody>{% for log in operation_logs %}<tr><td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td><td>{{ log.username|default:"-" }}</td><td>{{ log.method }} {{ log.action_name }}</td><td>{{ log.path }}</td><td>{{ log.status_code }}</td><td>{{ log.ip_address|default:"-" }}</td></tr>{% empty %}<tr><td colspan="6" class="muted">暂无操作记录</td></tr>{% endfor %}</tbody></table></div>
+                </div>
+            </section>
+        </div>
+    </div>
+{% endblock %}

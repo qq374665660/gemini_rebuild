@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.utils import OperationalError, ProgrammingError
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from cryptography.fernet import Fernet
@@ -20,6 +21,18 @@ class Project(models.Model):
     # 分类与归属
     OWNERSHIP_CHOICES = [('西勘院', '西勘院'), ('地下空间', '地下空间')]
     ownership = models.CharField(max_length=20, choices=OWNERSHIP_CHOICES, verbose_name="课题归属")
+
+    FUNDING_CATEGORY_CHOICES = [
+        ('special', '专项经费课题'),
+        ('self_funded', '企业全自筹课题'),
+    ]
+    funding_category = models.CharField(
+        max_length=20,
+        choices=FUNDING_CATEGORY_CHOICES,
+        default='special',
+        db_index=True,
+        verbose_name="经费管理类别",
+    )
     
     managing_unit = models.CharField(max_length=100, blank=True, verbose_name="归口单位")
 
@@ -38,14 +51,14 @@ class Project(models.Model):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, verbose_name="参与角色")
 
     STATUS_CHOICES = [
-        ('申报', '申报'),
+        ('未立项', '未立项'),
         ('在研', '在研'),
         ('延期', '延期'),
         ('结题', '结题'),
         ('终止', '终止'),
     ]
     STATUS_ALIASES = {
-        '未立项': '申报',
+        '申报': '未立项',
         '立项': '在研',
         '已立项': '在研',
         '进行中': '在研',
@@ -119,7 +132,19 @@ class ProjectAnalysis(models.Model):
     )
     file_name = models.CharField(max_length=255, verbose_name="分析文件名")
     file_size = models.IntegerField(null=True, blank=True, verbose_name="文件大小(字节)")
+    source_relative_path = models.CharField(
+        max_length=512,
+        blank=True,
+        verbose_name="课题文件相对路径",
+        help_text="分析来源位于课题文件目录内时记录其相对路径。",
+    )
     analysis_result = models.TextField(verbose_name="分析结果")
+    structured_data = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="结构化分析数据",
+        help_text="保留从任务书中提取的目标、研究内容、指标及进度等结构化数据。",
+    )
     confidence_score = models.FloatField(
         null=True, blank=True, 
         verbose_name="置信度分数",
@@ -151,14 +176,134 @@ class ProjectAnalysis(models.Model):
 
 class MetricsItem(models.Model):
     """产出指标项目表"""
+
+    INDICATOR_CATALOG = (
+        {
+            'category': 'ip',
+            'category_label': '知识产权类',
+            'item_name': '发明专利',
+            'unit': '项',
+            'assessment_method': '受理/授权',
+        },
+        {
+            'category': 'ip',
+            'category_label': '知识产权类',
+            'item_name': '实用新型专利',
+            'unit': '项',
+            'assessment_method': '受理/授权',
+        },
+        {
+            'category': 'ip',
+            'category_label': '知识产权类',
+            'item_name': '外观专利',
+            'unit': '项',
+            'assessment_method': '受理/授权',
+        },
+        {
+            'category': 'ip',
+            'category_label': '知识产权类',
+            'item_name': '软件著作权',
+            'unit': '项',
+            'assessment_method': '受理/授权',
+        },
+        {
+            'category': 'academic_output',
+            'category_label': '学术产出类',
+            'item_name': '核心期刊/SCI/EI论文',
+            'unit': '项',
+            'assessment_method': '录用证明或发表',
+        },
+        {
+            'category': 'academic_output',
+            'category_label': '学术产出类',
+            'item_name': '学术专著',
+            'unit': '项',
+            'assessment_method': '正式出版物',
+        },
+        {
+            'category': 'technical_standard',
+            'category_label': '技术标准',
+            'item_name': '企业级/团体/地方/行业/国家标准',
+            'unit': '项',
+            'assessment_method': '公布/成稿',
+        },
+        {
+            'category': 'technical_standard',
+            'category_label': '技术标准',
+            'item_name': '企业级/省部级/国家级工法',
+            'unit': '项',
+            'assessment_method': '公布/成稿',
+        },
+        {
+            'category': 'equipment_process',
+            'category_label': '装备、工艺类',
+            'item_name': '样机',
+            'unit': '套',
+            'assessment_method': '试制',
+        },
+        {
+            'category': 'equipment_process',
+            'category_label': '装备、工艺类',
+            'item_name': '图纸',
+            'unit': '套',
+            'assessment_method': '图纸归档',
+        },
+    )
     
     CATEGORY_CHOICES = [
+        ('ip', '知识产权类'),
+        ('academic_output', '学术产出类'),
+        ('technical_standard', '技术标准'),
+        ('equipment_process', '装备、工艺类'),
+        ('deliverable', '任务书考核指标'),
+        ('benefit', '经济与社会效益'),
+        ('milestone', '阶段进度目标'),
         ('technical', '技术成果指标'),
         ('academic', '学术成果指标'),
         ('standard', '标准制定指标'),
         ('talent', '人才培养指标'),
         ('economic', '经济效益指标'),
+        ('other', '其他指标'),
     ]
+
+    @classmethod
+    def get_indicator_catalog(cls, include_inactive=False):
+        try:
+            queryset = MetricIndicatorDefinition.objects.select_related('category')
+            if not include_inactive:
+                queryset = queryset.filter(is_active=True, category__is_active=True)
+            return tuple({
+                'category': item.category.code,
+                'category_label': item.category.name,
+                'item_name': item.name,
+                'unit': item.unit,
+                'assessment_method': item.assessment_method,
+            } for item in queryset)
+        except (OperationalError, ProgrammingError):
+            return cls.INDICATOR_CATALOG
+
+    @classmethod
+    def get_catalog_item(cls, item_name, include_inactive=False):
+        normalized_name = str(item_name or '').strip()
+        return next(
+            (
+                item for item in cls.get_indicator_catalog(include_inactive=include_inactive)
+                if item['item_name'] == normalized_name
+            ),
+            None,
+        )
+
+    @classmethod
+    def get_category_label_map(cls):
+        labels = dict(cls.CATEGORY_CHOICES)
+        try:
+            labels.update(MetricsCategory.objects.values_list('code', 'name'))
+        except (OperationalError, ProgrammingError):
+            pass
+        return labels
+
+    def get_configured_category_display(self):
+        return self.get_category_label_map().get(self.category, self.category)
     
     STATUS_CHOICES = [
         ('pending', '待完成'),
@@ -181,6 +326,12 @@ class MetricsItem(models.Model):
     item_name = models.CharField(max_length=255, verbose_name="指标项目名称")
     target_value = models.CharField(max_length=100, verbose_name="目标值")
     current_value = models.CharField(max_length=100, blank=True, verbose_name="当前值")
+    assessment_method = models.CharField(max_length=255, blank=True, verbose_name="考核方式")
+    planned_period = models.CharField(max_length=100, blank=True, verbose_name="计划时间")
+    source_section = models.CharField(max_length=100, blank=True, verbose_name="任务书来源章节")
+    source_page = models.CharField(max_length=50, blank=True, verbose_name="任务书来源页码")
+    responsible_person = models.CharField(max_length=100, blank=True, verbose_name="责任人")
+    progress_percent = models.PositiveSmallIntegerField(default=0, verbose_name="完成进度(%)")
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
@@ -188,6 +339,14 @@ class MetricsItem(models.Model):
         verbose_name="完成状态"
     )
     deadline = models.DateField(null=True, blank=True, verbose_name="截止时间")
+    actual_completion_date = models.DateField(null=True, blank=True, verbose_name="实际完成日期")
+    sort_order = models.PositiveIntegerField(default=0, verbose_name="排序")
+    extraction_source = models.CharField(
+        max_length=20,
+        default='manual',
+        choices=[('ai', 'AI提取'), ('manual', '手动录入'), ('legacy', '历史数据')],
+        verbose_name="数据来源",
+    )
     notes = models.TextField(blank=True, verbose_name="备注")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
@@ -198,12 +357,97 @@ class MetricsItem(models.Model):
     class Meta:
         verbose_name = "产出指标项目"
         verbose_name_plural = "产出指标项目"
-        ordering = ['category', 'item_name']
+        ordering = ['sort_order', 'category', 'item_name']
+
+
+class MetricsCategory(models.Model):
+    """可在系统设置中维护的指标大类。"""
+
+    code = models.CharField(max_length=20, unique=True, verbose_name='分类代码')
+    name = models.CharField(max_length=100, unique=True, verbose_name='指标大类')
+    sort_order = models.PositiveIntegerField(default=0, verbose_name='排序')
+    is_active = models.BooleanField(default=True, verbose_name='启用')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = '指标大类配置'
+        verbose_name_plural = '指标大类配置'
+        ordering = ['sort_order', 'id']
+
+
+class MetricIndicatorDefinition(models.Model):
+    """可配置的具体指标、量化单位及交付形式。"""
+
+    category = models.ForeignKey(
+        MetricsCategory,
+        on_delete=models.PROTECT,
+        related_name='indicators',
+        verbose_name='指标大类',
+    )
+    name = models.CharField(max_length=255, unique=True, verbose_name='具体指标')
+    unit = models.CharField(max_length=20, blank=True, verbose_name='量化单位')
+    assessment_method = models.CharField(max_length=255, blank=True, verbose_name='交付/佐证形式')
+    sort_order = models.PositiveIntegerField(default=0, verbose_name='排序')
+    is_active = models.BooleanField(default=True, verbose_name='启用')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    def __str__(self):
+        return f'{self.category.name} - {self.name}'
+
+    class Meta:
+        verbose_name = '具体指标配置'
+        verbose_name_plural = '具体指标配置'
+        ordering = ['category__sort_order', 'sort_order', 'id']
+
+
+class MetricEvidence(models.Model):
+    """指标完成情况所关联的课题文件。"""
+
+    metric = models.ForeignKey(
+        MetricsItem,
+        on_delete=models.CASCADE,
+        related_name='evidence_files',
+        verbose_name="关联指标",
+    )
+    relative_path = models.CharField(max_length=512, verbose_name="课题文件相对路径")
+    display_name = models.CharField(max_length=255, verbose_name="文件名")
+    note = models.CharField(max_length=255, blank=True, verbose_name="佐证说明")
+    created_by = models.ForeignKey(
+        'auth.User',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='metric_evidence_links',
+        verbose_name="关联人",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="关联时间")
+
+    def __str__(self):
+        return f"{self.metric.item_name} - {self.display_name}"
+
+    class Meta:
+        verbose_name = "指标佐证文件"
+        verbose_name_plural = "指标佐证文件"
+        ordering = ['created_at', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['metric', 'relative_path'],
+                name='unique_metric_evidence_path',
+            ),
+        ]
 
 
 class ExpenseImport(models.Model):
     source_file = models.CharField(max_length=512, verbose_name="数据来源文件")
     sheet_name = models.CharField(max_length=50, default="Sheet2", verbose_name="工作表")
+    original_filename = models.CharField(max_length=255, blank=True, verbose_name="原始文件名")
+    file_sha256 = models.CharField(max_length=64, blank=True, db_index=True, verbose_name="文件哈希")
+    format_version = models.CharField(max_length=50, default="legacy", db_index=True, verbose_name="数据口径版本")
     file_mtime = models.DateTimeField(null=True, blank=True, verbose_name="文件更新时间")
     threshold = models.FloatField(default=0.85, verbose_name="匹配阈值")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="导入时间")
@@ -215,6 +459,13 @@ class ExpenseImport(models.Model):
         verbose_name = "支出数据导入"
         verbose_name_plural = "支出数据导入"
         ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['format_version', 'file_sha256'],
+                condition=~models.Q(file_sha256=''),
+                name='unique_expense_import_file_hash',
+            ),
+        ]
 
 
 class ExpenseMapping(models.Model):
@@ -253,11 +504,18 @@ class ExpenseSnapshot(models.Model):
         related_name='expense_snapshots',
         verbose_name="关联课题"
     )
+    funding_category = models.CharField(
+        max_length=20,
+        choices=Project.FUNDING_CATEGORY_CHOICES,
+        default='special',
+        db_index=True,
+        verbose_name="经费管理类别",
+    )
     project_name = models.CharField(max_length=255, verbose_name="课题名称")
     company_name = models.CharField(max_length=100, blank=True, verbose_name="公司名称")
     matched_description = models.TextField(blank=True, verbose_name="匹配描述")
     match_score = models.FloatField(null=True, blank=True, verbose_name="匹配分数")
-    total_expense = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name="累计支出")
+    total_expense = models.DecimalField(max_digits=18, decimal_places=4, default=0, verbose_name="累计支出")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="建立时间")
 
     def __str__(self):
@@ -275,6 +533,7 @@ class APIConfig(models.Model):
     SERVICE_CHOICES = [
         ('deepseek', 'DeepSeek'),
         ('kimi', 'Kimi (Moonshot)'),
+        ('local', '本地模型'),
     ]
     
     service_name = models.CharField(
@@ -283,7 +542,18 @@ class APIConfig(models.Model):
         unique=True,
         verbose_name="AI服务"
     )
-    api_key = models.TextField(verbose_name="API密钥")
+    api_key = models.TextField(blank=True, verbose_name="API密钥")
+    base_url = models.URLField(
+        max_length=500,
+        blank=True,
+        verbose_name="服务地址",
+        help_text="填写服务根地址、/v1 地址或完整的 chat/completions 地址。",
+    )
+    model_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="模型名称",
+    )
     is_active = models.BooleanField(default=True, verbose_name="启用状态")
     test_success = models.BooleanField(default=False, verbose_name="测试通过")
     last_test_time = models.DateTimeField(null=True, blank=True, verbose_name="最后测试时间")
@@ -361,6 +631,8 @@ class APIConfig(models.Model):
                         raise ValidationError({
                             'api_key': 'API密钥格式不正确，应该以 sk- 开头'
                         })
+                elif self.service_name in ['deepseek', 'kimi']:
+                    raise ValidationError({'api_key': '该服务必须配置API密钥'})
             except ValidationError:
                 raise  # 重新抛出验证错误
             except Exception:

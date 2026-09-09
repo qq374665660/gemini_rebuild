@@ -1,0 +1,85 @@
+{% with data=research_analysis.structured_data %}
+    {% if data.research_goal or data.research_sections or data.methods or data.technical_route or data.innovations or data.milestones %}
+        {% if data.research_goal %}
+            <section class="analysis-highlight-card">
+                <div class="analysis-block-label"><i class="fas fa-bullseye"></i> 课题研究目标</div>
+                <p>{{ data.research_goal }}</p>
+            </section>
+        {% endif %}
+
+        {% if data.research_sections %}
+            <div class="analysis-section-heading">
+                <div><i class="fas fa-list-check"></i> 任务书研究内容</div>
+                <span>按任务书原有层级提取 {{ data.research_sections|length }} 个部分</span>
+            </div>
+            <div class="research-section-grid">
+                {% for section in data.research_sections %}
+                    <article class="research-section-card">
+                        <div class="research-section-index">{{ forloop.counter|stringformat:"02d" }}</div>
+                        <div>
+                            <h5>{{ section.title|default:"研究内容" }}</h5>
+                            {% if section.description %}<p>{{ section.description }}</p>{% endif %}
+                            {% if section.subitems %}
+                                <ul class="analysis-clean-list">
+                                    {% for subitem in section.subitems %}
+                                        <li>
+                                            {% if subitem.title %}<strong>{{ subitem.title }}</strong>{% endif %}
+                                            {% if subitem.description %}<span>{{ subitem.description }}</span>{% endif %}
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            {% endif %}
+                        </div>
+                    </article>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <div class="analysis-detail-grid">
+            {% if data.methods %}
+                <section class="analysis-detail-card">
+                    <h5><i class="fas fa-flask"></i> 研究方法</h5>
+                    <ol>{% for item in data.methods %}<li>{{ item }}</li>{% endfor %}</ol>
+                </section>
+            {% endif %}
+            {% if data.technical_route %}
+                <section class="analysis-detail-card">
+                    <h5><i class="fas fa-route"></i> 技术路线</h5>
+                    <ol>{% for item in data.technical_route %}<li>{{ item }}</li>{% endfor %}</ol>
+                </section>
+            {% endif %}
+            {% if data.technical_difficulties %}
+                <section class="analysis-detail-card">
+                    <h5><i class="fas fa-triangle-exclamation"></i> 技术难点</h5>
+                    <ul>{% for item in data.technical_difficulties %}<li>{{ item }}</li>{% endfor %}</ul>
+                </section>
+            {% endif %}
+            {% if data.innovations %}
+                <section class="analysis-detail-card">
+                    <h5><i class="fas fa-lightbulb"></i> 创新与突破</h5>
+                    <ul>{% for item in data.innovations %}<li>{{ item }}</li>{% endfor %}</ul>
+                </section>
+            {% endif %}
+        </div>
+
+        {% if data.milestones %}
+            <section class="analysis-timeline">
+                <h5><i class="fas fa-calendar-alt"></i> 任务书进度计划</h5>
+                {% for item in data.milestones %}
+                    <div class="analysis-timeline-item">
+                        <span>{{ item.time_range|default:"时间待补充" }}</span>
+                        <strong>{{ item.stage_goal }}</strong>
+                    </div>
+                {% endfor %}
+            </section>
+        {% endif %}
+    {% elif research_analysis %}
+        <div class="analysis-legacy-result">{{ research_analysis.analysis_result|linebreaks }}</div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon"><i class="fas fa-file-alt"></i></div>
+            <h5>暂无分析结果</h5>
+            <p>请上传任务书进行分析或手动编辑。</p>
+        </div>
+    {% endif %}
+{% endwith %}

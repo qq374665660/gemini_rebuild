@@ -1,0 +1,45 @@
+<div class="ai-message ai-message-assistant">
+    <div class="ai-message-mini-avatar" aria-hidden="true"><i class="fas fa-robot"></i></div>
+    <div class="ai-message-content">
+        {% if result.ok %}
+            <div class="ai-message-bubble ai-result-answer">{{ result.answer }}</div>
+
+            {% if result.kind == 'comparison' %}
+                <div class="ai-result-stats">
+                    <div><span>{{ result.comparison.target_year }} 年</span><strong>{{ result.comparison.target_count }}</strong><small>项课题</small></div>
+                    <div><span>{{ result.comparison.base_year }} 年</span><strong>{{ result.comparison.base_count }}</strong><small>项课题</small></div>
+                    <div><span>数量变化</span><strong>{% if result.comparison.difference > 0 %}+{% endif %}{{ result.comparison.difference }}</strong><small>项</small></div>
+                    <div><span>增长率</span><strong>{{ result.comparison.growth_rate_text }}</strong><small>相对基期</small></div>
+                </div>
+            {% elif result.rows %}
+                <div class="ai-project-results">
+                    {% for row in result.rows|slice:":10" %}
+                        <a href="{% url 'project_detail' row.project.project_id %}" class="ai-project-result">
+                            <span class="ai-project-result-title">{{ row.project.name }}</span>
+                            <span class="ai-project-result-meta">
+                                {{ row.project.project_id }} · {{ row.project.start_year }}年 · {{ row.project.status }}
+                                {% if row.person_roles %} · {{ row.person_roles }}{% endif %}
+                            </span>
+                            {% if row.effective_end_date %}
+                                <span class="ai-project-result-date"><i class="far fa-calendar"></i> 结题：{{ row.effective_end_date|date:"Y-m-d" }}</span>
+                            {% endif %}
+                        </a>
+                    {% endfor %}
+                    {% if result.total > 10 %}<p class="ai-result-more">共 {{ result.total }} 项，当前显示前 10 项</p>{% endif %}
+                </div>
+            {% elif result.kind == 'count' %}
+                <div class="ai-count-result"><strong>{{ result.total }}</strong><span>项课题</span></div>
+            {% endif %}
+
+            <details class="ai-result-scope">
+                <summary><i class="fas fa-circle-info"></i> 查看统计口径</summary>
+                <p>{{ result.scope }}{% if result.source %} · {{ result.source }}{% endif %}</p>
+            </details>
+        {% else %}
+            <div class="ai-message-bubble ai-result-error">
+                <strong>我暂时没理解这个问题</strong>
+                <span>{{ result.error }}</span>
+            </div>
+        {% endif %}
+    </div>
+</div>

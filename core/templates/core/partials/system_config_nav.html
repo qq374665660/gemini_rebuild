@@ -1,0 +1,22 @@
+{% with current=request.resolver_match.url_name %}
+<nav class="system-config-nav" aria-label="系统配置模块">
+    <div class="system-config-nav-heading">
+        <span class="system-config-nav-mark"><i class="fas fa-sliders"></i></span>
+        <span><strong>系统配置</strong><small>集中管理系统参数与服务</small></span>
+    </div>
+    <div class="system-config-nav-links">
+        <a href="{% url 'settings' %}" class="system-config-nav-link{% if current == 'settings' %} active{% endif %}">
+            <i class="fas fa-screwdriver-wrench"></i><span>参数与维护</span>
+        </a>
+        <a href="{% url 'api_config' %}" class="system-config-nav-link{% if current == 'api_config' %} active{% endif %}">
+            <i class="fas fa-brain"></i><span>AI 模型配置</span>
+        </a>
+        <a href="{% url 'user_management' %}" class="system-config-nav-link{% if current == 'user_management' %} active{% endif %}">
+            <i class="fas fa-users-gear"></i><span>用户与权限</span>
+        </a>
+        <a href="{% url 'init_system' %}" class="system-config-nav-link{% if current == 'init_system' %} active{% endif %}">
+            <i class="fas fa-database"></i><span>初始化工具</span>
+        </a>
+    </div>
+</nav>
+{% endwith %}

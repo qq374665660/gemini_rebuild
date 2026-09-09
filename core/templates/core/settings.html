@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>系统设置 - 科研课题管理系统</title>
+    <title>系统配置 - 科研课题管理系统</title>
     {% load static %}
     <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
-    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=3.0">
     <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'core/vendor/fontawesome/css/all.min.css' %}?v=6.0.0">
     <style>
         .backup-status-grid {
             display: grid;
@@ -19,7 +19,7 @@
 
         .backup-schedule-form-grid {
             display: grid;
-            grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.8fr) auto;
+            grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.8fr) minmax(180px, 0.8fr) auto;
             gap: 1rem;
             align-items: end;
         }
@@ -28,10 +28,277 @@
             width: 100%;
         }
 
+        .metric-config-note {
+            margin-bottom: 18px;
+            padding: 12px 14px;
+            border-left: 4px solid var(--primary-color);
+            border-radius: 10px;
+            background: var(--primary-lighter);
+            color: var(--text-secondary);
+            line-height: 1.65;
+        }
+
+        .metric-category-config-card {
+            margin-top: 16px;
+            padding: 16px;
+            border: 1px solid var(--border-light);
+            border-radius: 14px;
+            background: var(--bg-secondary);
+        }
+
+        .metric-category-config-card.is-inactive {
+            opacity: 0.72;
+        }
+
+        .metric-category-editor,
+        .metric-indicator-editor,
+        .metric-indicator-create,
+        .metric-category-create {
+            display: grid;
+            gap: 10px;
+            align-items: end;
+        }
+
+        .metric-category-editor {
+            grid-template-columns: minmax(220px, 1fr) 100px 100px auto;
+        }
+
+        .metric-indicator-editor {
+            grid-template-columns: minmax(190px, 1.2fr) minmax(150px, .8fr) 90px minmax(190px, 1.1fr) 82px 82px auto;
+            padding: 12px 0;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .metric-indicator-create {
+            grid-template-columns: minmax(190px, 1.2fr) 90px minmax(190px, 1.1fr) 82px 82px auto;
+            margin-top: 12px;
+            padding-top: 14px;
+            border-top: 1px dashed var(--border-color);
+        }
+
+        .metric-category-create {
+            grid-template-columns: minmax(220px, 1fr) 100px 100px auto;
+            margin-top: 20px;
+            padding: 16px;
+            border: 1px dashed var(--primary-color);
+            border-radius: 14px;
+            background: #f8fbff;
+        }
+
+        .metric-config-field label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .metric-config-field .form-select {
+            width: 100%;
+            min-height: 48px;
+            padding: 0 12px;
+            border: 1px solid var(--border-light);
+            border-radius: 10px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font: inherit;
+        }
+
+        .metric-config-active {
+            align-self: center;
+            padding-top: 22px;
+        }
+
+        .metric-config-actions {
+            display: flex;
+            gap: 7px;
+            justify-content: flex-end;
+            white-space: nowrap;
+        }
+
+        .metric-config-subtitle {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 16px 0 4px;
+            color: var(--text-secondary);
+        }
+
         @media (max-width: 768px) {
             .backup-status-grid,
-            .backup-schedule-form-grid {
+            .backup-schedule-form-grid,
+            .metric-category-editor,
+            .metric-indicator-editor,
+            .metric-indicator-create,
+            .metric-category-create {
                 grid-template-columns: 1fr;
+            }
+            .metric-config-active { padding-top: 0; }
+            .metric-config-actions { justify-content: flex-start; }
+        }
+
+        .settings-page-header {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            min-height: 132px;
+            margin: 28px 0 30px;
+            padding: 28px 30px;
+            border: 1px solid var(--border-light);
+            border-radius: 20px;
+            background: linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%);
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
+        }
+
+        .settings-page-header::after {
+            content: '';
+            position: absolute;
+            right: -70px;
+            top: -110px;
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            background: rgba(37, 99, 235, 0.07);
+            pointer-events: none;
+        }
+
+        .settings-page-header h1 {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 0;
+            font-size: clamp(28px, 2vw, 32px);
+        }
+
+        .settings-page-header h1 i {
+            display: grid;
+            place-items: center;
+            flex: 0 0 46px;
+            width: 46px;
+            height: 46px;
+            border-radius: 14px;
+            color: #fff;
+            background: var(--primary-color);
+            box-shadow: var(--shadow-primary);
+            font-size: 21px;
+        }
+
+        .settings-page-header p {
+            position: relative;
+            z-index: 1;
+            margin: 9px 0 0 58px;
+            color: var(--text-secondary);
+            font-size: 16px;
+        }
+
+        .settings-jump-nav {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            gap: 8px;
+            padding: 10px;
+            margin-bottom: 18px;
+            overflow-x: auto;
+            border: 1px solid var(--border-light);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .settings-jump-nav a {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            border-radius: 10px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .settings-jump-nav a:hover,
+        .settings-jump-nav a:focus-visible {
+            color: var(--primary-color);
+            background: var(--primary-lighter);
+        }
+
+        .settings-page .row,
+        .settings-page .col-md-8 {
+            display: block;
+            width: 100%;
+            max-width: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .settings-shell-card {
+            border: 0;
+            background: transparent;
+            box-shadow: none;
+        }
+
+        .settings-shell-card > .card-header {
+            display: none;
+        }
+
+        .settings-shell-card > .card-body {
+            padding: 0;
+        }
+
+        .settings-shell-card > .card-body > hr {
+            display: none;
+        }
+
+        .settings-panel {
+            scroll-margin-top: 96px;
+            margin-bottom: 18px !important;
+            padding: 22px !important;
+            border: 1px solid var(--border-light) !important;
+            border-radius: 16px !important;
+            background: var(--bg-primary) !important;
+            box-shadow: var(--shadow-card);
+        }
+
+        .settings-panel > .mb-4,
+        .settings-panel > .mb-4:last-child {
+            margin-bottom: 0;
+        }
+
+        .settings-panel-risk {
+            border-left: 4px solid var(--warning-color) !important;
+        }
+
+        .settings-risk-label {
+            display: inline-flex;
+            margin-left: 8px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: var(--warning-light);
+            color: #92400e;
+            font-size: var(--font-size-xs);
+            vertical-align: middle;
+        }
+
+        @media (max-width: 640px) {
+            .settings-page-header {
+                min-height: 0;
+                margin-top: 18px;
+                margin-bottom: 22px;
+                padding: 22px 20px;
+            }
+            .settings-page-header h1 {
+                font-size: var(--font-size-2xl);
+            }
+            .settings-page-header p {
+                margin-left: 0;
+            }
+            .settings-panel {
+                padding: 16px !important;
             }
         }
     </style>
@@ -43,10 +310,25 @@
         
         <!-- 主要内容区域 -->
         <main class="app-main">
-<div class="container">
+<div class="container settings-page">
+    <div class="settings-page-header">
+        <div>
+            <h1><i class="fas fa-sliders"></i> 系统配置</h1>
+            <p>统一管理系统参数、AI 模型、用户权限和维护工具。</p>
+        </div>
+    </div>
+    {% include 'core/partials/system_config_nav.html' %}
+    <nav class="settings-jump-nav" aria-label="设置分类">
+        <a href="#permission-settings"><i class="fas fa-user-shield"></i> 权限</a>
+        <a href="#metric-settings"><i class="fas fa-list-check"></i> 指标类型</a>
+        <a href="#backup-settings"><i class="fas fa-clock-rotate-left"></i> 自动备份</a>
+        <a href="#storage-settings"><i class="fas fa-folder"></i> 文件存储</a>
+        <a href="#project-path-settings"><i class="fas fa-folder-open"></i> 单课题路径</a>
+        <a href="#network-settings"><i class="fas fa-network-wired"></i> 网络共享</a>
+    </nav>
     <div class="row">
         <div class="col-md-8 offset-md-2">
-            <div class="card">
+            <div class="card settings-shell-card">
                 <div class="card-header">
                     <h4><i class="fas fa-cog"></i> 系统设置</h4>
                 </div>
@@ -60,7 +342,7 @@
                         {% endfor %}
                     {% endif %}
 
-                    <div class="mb-4 p-3 border rounded bg-light">
+                    <section class="settings-panel" id="permission-settings">
                         <h5><i class="fas fa-user-shield"></i> 只读用户权限</h5>
                         <hr>
                         <form method="post">
@@ -80,17 +362,161 @@
                                 <i class="fas fa-save"></i> 保存只读权限
                             </button>
                         </form>
-                    </div>
+                    </section>
 
-                    <div class="mb-4 p-3 border rounded bg-light">
+                    <section class="settings-panel" id="metric-settings">
+                        <h5><i class="fas fa-list-check"></i> 指标类型管理</h5>
+                        <hr>
+                        <div class="metric-config-note">
+                            在这里维护“新增指标”和“更新完成情况”窗口中的选项。停用后只影响后续选择，已有课题指标不会被删除；修改大类名称会同步更新课题指标分组名称。
+                        </div>
+
+                        {% for category in metric_categories %}
+                            <div class="metric-category-config-card{% if not category.is_active %} is-inactive{% endif %}">
+                                <form method="post" class="metric-category-editor">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="category_id" value="{{ category.id }}">
+                                    <div class="metric-config-field">
+                                        <label for="category-name-{{ category.id }}">指标大类</label>
+                                        <input id="category-name-{{ category.id }}" class="form-control" name="category_name" value="{{ category.name }}" maxlength="100" required>
+                                    </div>
+                                    <div class="metric-config-field">
+                                        <label for="category-sort-{{ category.id }}">排序</label>
+                                        <input id="category-sort-{{ category.id }}" class="form-control" type="number" name="sort_order" value="{{ category.sort_order }}" min="0" max="9999" required>
+                                    </div>
+                                    <div class="form-check metric-config-active">
+                                        <input class="form-check-input" type="checkbox" id="category-active-{{ category.id }}" name="is_active" {% if category.is_active %}checked{% endif %}>
+                                        <label class="form-check-label" for="category-active-{{ category.id }}">启用大类</label>
+                                    </div>
+                                    <div class="metric-config-actions">
+                                        <button class="btn btn-primary btn-sm" type="submit" name="action" value="update_metric_category"><i class="fas fa-save"></i> 保存</button>
+                                        <button class="btn btn-danger btn-sm" type="submit" name="action" value="delete_metric_category" formnovalidate onclick="return confirm('确定删除该指标大类吗？只有未被使用且不含具体指标的大类可以删除。');"><i class="fas fa-trash"></i> 删除</button>
+                                    </div>
+                                </form>
+
+                                <div class="metric-config-subtitle">
+                                    <strong>具体指标</strong>
+                                    <span>{{ category.indicators.all|length }} 项</span>
+                                </div>
+
+                                {% for indicator in category.indicators.all %}
+                                    <form method="post" class="metric-indicator-editor{% if not indicator.is_active %} is-inactive{% endif %}">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="indicator_id" value="{{ indicator.id }}">
+                                        <div class="metric-config-field">
+                                            <label for="indicator-name-{{ indicator.id }}">具体指标</label>
+                                            <input id="indicator-name-{{ indicator.id }}" class="form-control" name="indicator_name" value="{{ indicator.name }}" maxlength="255" required>
+                                        </div>
+                                        <div class="metric-config-field">
+                                            <label for="indicator-category-{{ indicator.id }}">所属大类</label>
+                                            <select id="indicator-category-{{ indicator.id }}" class="form-select" name="category_id" required>
+                                                {% for option_category in metric_categories %}
+                                                    <option value="{{ option_category.id }}" {% if option_category.id == indicator.category_id %}selected{% endif %}>{{ option_category.name }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div class="metric-config-field">
+                                            <label for="indicator-unit-{{ indicator.id }}">单位</label>
+                                            <input id="indicator-unit-{{ indicator.id }}" class="form-control" name="unit" value="{{ indicator.unit }}" maxlength="20" placeholder="项/套">
+                                        </div>
+                                        <div class="metric-config-field">
+                                            <label for="indicator-assessment-{{ indicator.id }}">交付/佐证形式</label>
+                                            <input id="indicator-assessment-{{ indicator.id }}" class="form-control" name="assessment_method" value="{{ indicator.assessment_method }}" maxlength="255">
+                                        </div>
+                                        <div class="metric-config-field">
+                                            <label for="indicator-sort-{{ indicator.id }}">排序</label>
+                                            <input id="indicator-sort-{{ indicator.id }}" class="form-control" type="number" name="sort_order" value="{{ indicator.sort_order }}" min="0" max="9999" required>
+                                        </div>
+                                        <div class="form-check metric-config-active">
+                                            <input class="form-check-input" type="checkbox" id="indicator-active-{{ indicator.id }}" name="is_active" {% if indicator.is_active %}checked{% endif %}>
+                                            <label class="form-check-label" for="indicator-active-{{ indicator.id }}">启用</label>
+                                        </div>
+                                        <div class="metric-config-actions">
+                                            <button class="btn btn-primary btn-sm" type="submit" name="action" value="update_metric_indicator"><i class="fas fa-save"></i> 保存</button>
+                                            <button class="btn btn-danger btn-sm" type="submit" name="action" value="delete_metric_indicator" formnovalidate onclick="return confirm('确定删除该具体指标吗？已有课题使用时将无法删除，可改为停用。');"><i class="fas fa-trash"></i> 删除</button>
+                                        </div>
+                                    </form>
+                                {% empty %}
+                                    <div class="form-text">该大类下还没有具体指标。</div>
+                                {% endfor %}
+
+                                <form method="post" class="metric-indicator-create">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="create_metric_indicator">
+                                    <input type="hidden" name="category_id" value="{{ category.id }}">
+                                    <div class="metric-config-field">
+                                        <label for="new-indicator-name-{{ category.id }}">新增具体指标</label>
+                                        <input id="new-indicator-name-{{ category.id }}" class="form-control" name="indicator_name" maxlength="255" placeholder="填写具体指标名称" required>
+                                    </div>
+                                    <div class="metric-config-field">
+                                        <label for="new-indicator-unit-{{ category.id }}">单位</label>
+                                        <input id="new-indicator-unit-{{ category.id }}" class="form-control" name="unit" maxlength="20" placeholder="项/套">
+                                    </div>
+                                    <div class="metric-config-field">
+                                        <label for="new-indicator-assessment-{{ category.id }}">交付/佐证形式</label>
+                                        <input id="new-indicator-assessment-{{ category.id }}" class="form-control" name="assessment_method" maxlength="255">
+                                    </div>
+                                    <div class="metric-config-field">
+                                        <label for="new-indicator-sort-{{ category.id }}">排序</label>
+                                        <input id="new-indicator-sort-{{ category.id }}" class="form-control" type="number" name="sort_order" value="0" min="0" max="9999" required>
+                                    </div>
+                                    <div class="form-check metric-config-active">
+                                        <input class="form-check-input" type="checkbox" id="new-indicator-active-{{ category.id }}" name="is_active" checked>
+                                        <label class="form-check-label" for="new-indicator-active-{{ category.id }}">启用</label>
+                                    </div>
+                                    <div class="metric-config-actions">
+                                        <button class="btn btn-success btn-sm" type="submit"><i class="fas fa-plus"></i> 新增指标</button>
+                                    </div>
+                                </form>
+                            </div>
+                        {% empty %}
+                            <div class="alert alert-warning">尚未配置指标大类，请先新增一个大类。</div>
+                        {% endfor %}
+
+                        <form method="post" class="metric-category-create">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="create_metric_category">
+                            <div class="metric-config-field">
+                                <label for="new-category-name">新增指标大类</label>
+                                <input id="new-category-name" class="form-control" name="category_name" maxlength="100" placeholder="填写大类名称" required>
+                            </div>
+                            <div class="metric-config-field">
+                                <label for="new-category-sort">排序</label>
+                                <input id="new-category-sort" class="form-control" type="number" name="sort_order" value="0" min="0" max="9999" required>
+                            </div>
+                            <div class="form-check metric-config-active">
+                                <input class="form-check-input" type="checkbox" id="new-category-active" name="is_active" checked>
+                                <label class="form-check-label" for="new-category-active">启用大类</label>
+                            </div>
+                            <div class="metric-config-actions">
+                                <button class="btn btn-success" type="submit"><i class="fas fa-plus"></i> 新增大类</button>
+                            </div>
+                        </form>
+                    </section>
+
+                    <section class="settings-panel" id="backup-settings">
                         <h5><i class="fas fa-clock-rotate-left"></i> 自动备份计划</h5>
                         <hr>
 
+                        <div id="backup-schedule-content" data-status-url="{% url 'backup_schedule_status' %}">
+                            <div class="alert alert-info mb-0">
+                                <i class="fas fa-spinner fa-spin"></i> 正在读取自动备份状态，页面其他设置可正常使用……
+                            </div>
+                        </div>
+                        {% comment %}旧版同步渲染结构保留在源码中，实际内容由异步接口加载。
                         {% if backup_schedule.available %}
                             <div class="backup-status-grid">
                                 <div>
                                     <strong>当前计划：</strong>
                                     每隔 {{ backup_schedule.interval_days }} 天，于 {{ backup_schedule.time }} 执行
+                                </div>
+                                <div>
+                                    <strong>自动备份：</strong>
+                                    {% if backup_schedule.enabled %}
+                                        <span class="badge bg-success">已启用</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">已停用</span>
+                                    {% endif %}
                                 </div>
                                 <div>
                                     <strong>下次执行：</strong>
@@ -112,7 +538,7 @@
                                 </div>
                             </div>
 
-                            <form method="post" onsubmit="return confirm('确认调整自动备份间隔和时间吗？备份脚本和备份目录不会改变。');">
+                            <form method="post" onsubmit="return confirm('确认保存自动备份的启停状态、间隔和时间吗？备份脚本和备份目录不会改变。');">
                                 {% csrf_token %}
                                 <input type="hidden" name="action" value="save_backup_schedule">
                                 <div class="backup-schedule-form-grid">
@@ -128,6 +554,15 @@
                                         <input type="time" class="form-control" id="backup_time" name="backup_time"
                                                value="{{ backup_schedule.time }}" required
                                                {% if backup_schedule.read_only %}disabled{% endif %}>
+                                    </div>
+                                    <div>
+                                        <label class="form-label" for="backup_enabled">自动备份状态</label>
+                                        <div class="form-check" style="padding-top: 0.5rem;">
+                                            <input class="form-check-input" type="checkbox" id="backup_enabled"
+                                                   name="backup_enabled" {% if backup_schedule.enabled %}checked{% endif %}
+                                                   {% if backup_schedule.read_only %}disabled{% endif %}>
+                                            <label class="form-check-label" for="backup_enabled">启用自动备份</label>
+                                        </div>
                                     </div>
                                     <div class="backup-schedule-action">
                                         <button type="submit" class="btn btn-primary"
@@ -146,7 +581,7 @@
                                 </div>
                             {% else %}
                                 <div class="form-text mt-2">
-                                    此操作只调整 <code>{{ backup_schedule.task_name }}</code> 的执行间隔和时间，
+                                    此操作只调整 <code>{{ backup_schedule.task_name }}</code> 的启停状态、执行间隔和时间，
                                     不会修改备份脚本、目标目录、保留份数或运行账户。
                                 </div>
                             {% endif %}
@@ -162,16 +597,17 @@
                                 <div class="form-text mt-2">开发环境不会连接或修改正式服务器的计划任务。</div>
                             {% endif %}
                         {% endif %}
-                    </div>
+                        {% endcomment %}
+                    </section>
 
                     <hr style="margin: 2rem 0;">
 
-                    <form method="post">
+                    <form method="post" class="settings-panel settings-panel-risk" id="storage-settings">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="save_path">
                         
                         <div class="mb-4">
-                            <h5><i class="fas fa-folder"></i> 项目文件夹设置</h5>
+                            <h5><i class="fas fa-folder"></i> 项目文件夹设置 <span class="settings-risk-label">高风险</span></h5>
                             <hr>
                             
                             <div class="mb-3">
@@ -214,12 +650,12 @@
                     
                     <hr style="margin: 2rem 0;">
                     
-                    <form method="post">
+                    <form method="post" class="settings-panel settings-panel-risk" id="project-path-settings">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="update_project_path">
                         
                         <div class="mb-4">
-                            <h5><i class="fas fa-folder-open"></i> 单个项目路径调整</h5>
+                            <h5><i class="fas fa-folder-open"></i> 单个项目路径调整 <span class="settings-risk-label">谨慎操作</span></h5>
                             <hr>
                             
                             <div class="mb-3">
@@ -258,7 +694,7 @@
                     <hr style="margin: 2rem 0;">
                     
                     <!-- 网络共享设置 -->
-                    <form method="post">
+                    <form method="post" class="settings-panel" id="network-settings">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="save_network">
                         
@@ -326,5 +762,35 @@
 </div>
         </main>
     </div>
+    <script>
+        document.querySelectorAll('.alert .btn-close').forEach(function (button) {
+            button.addEventListener('click', function () {
+                const alert = button.closest('.alert');
+                if (alert) {
+                    alert.remove();
+                }
+            });
+        });
+
+        const backupScheduleContent = document.getElementById('backup-schedule-content');
+        if (backupScheduleContent) {
+            fetch(backupScheduleContent.dataset.statusUrl, {
+                headers: {'X-Requested-With': 'XMLHttpRequest'},
+                credentials: 'same-origin'
+            })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.text();
+                })
+                .then(function (html) {
+                    backupScheduleContent.innerHTML = html;
+                })
+                .catch(function () {
+                    backupScheduleContent.innerHTML = '<div class="alert alert-warning mb-0"><i class="fas fa-exclamation-triangle"></i> 暂时无法读取自动备份状态，请稍后刷新重试。</div>';
+                });
+        }
+    </script>
 </body>
 </html>

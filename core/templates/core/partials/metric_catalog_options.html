@@ -1,0 +1,15 @@
+<option value="">请选择具体指标</option>
+{% regroup metric_indicator_catalog by category_label as catalog_groups %}
+{% for group in catalog_groups %}
+    <optgroup label="{{ group.grouper }}">
+        {% for catalog_item in group.list %}
+            <option value="{{ catalog_item.item_name }}"
+                data-category="{{ catalog_item.category }}"
+                data-category-label="{{ catalog_item.category_label }}"
+                data-unit="{{ catalog_item.unit }}"
+                data-assessment="{{ catalog_item.assessment_method }}">
+                {{ catalog_item.item_name }}
+            </option>
+        {% endfor %}
+    </optgroup>
+{% endfor %}

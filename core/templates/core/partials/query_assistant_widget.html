@@ -1,0 +1,66 @@
+{% load static %}
+<link rel="stylesheet" href="{% static 'core/css/query-assistant.css' %}?v=5.0">
+
+<aside class="ai-widget" data-ai-widget data-query-url="{% url 'query_assistant' %}" data-funding-category="{{ funding_category|default:'' }}">
+    <button class="ai-widget-launcher" type="button" data-ai-launcher
+            aria-label="打开课题智能助手" aria-expanded="false" aria-controls="ai-assistant-panel">
+        <span class="ai-widget-launcher-label">智能助手</span>
+        <span class="ai-widget-launcher-icon" aria-hidden="true">
+            <i class="fas fa-robot"></i>
+            <span class="ai-widget-online-dot"></span>
+        </span>
+    </button>
+
+    <section class="ai-widget-panel" id="ai-assistant-panel" data-ai-panel
+             role="dialog" aria-label="课题智能助手" aria-hidden="true">
+        <header class="ai-widget-header">
+            <div class="ai-widget-avatar" aria-hidden="true"><i class="fas fa-robot"></i></div>
+            <div class="ai-widget-heading">
+                <strong>课题智能助手</strong>
+                <span><i></i> <b data-ai-model-status>{% if ai_model_options %}{{ ai_model_options.0.service_label }} / {{ ai_model_options.0.model_name }}{% else %}本地规则模式{% endif %}</b> · 只读查询</span>
+            </div>
+            <button class="ai-widget-close" type="button" data-ai-close aria-label="关闭智能助手">
+                <i class="fas fa-xmark" aria-hidden="true"></i>
+            </button>
+        </header>
+
+        <div class="ai-widget-messages" data-ai-messages aria-live="polite">
+            <div class="ai-message ai-message-assistant">
+                <div class="ai-message-mini-avatar" aria-hidden="true"><i class="fas fa-robot"></i></div>
+                <div class="ai-message-content">
+                    <div class="ai-message-bubble">
+                        你好，我是课题 AI 助手。你可以直接描述想了解的问题，我会查询台账后回答，也能继续追问“这些课题”或“再和去年比较”。
+                    </div>
+                    <div class="ai-suggestion-list" aria-label="示例问题">
+                        <button type="button" data-ai-question="今年有哪些课题要结题？">今年有哪些课题要结题？</button>
+                        <button type="button" data-ai-question="26年比25年省部级课题增长数量和比率">26年比25年省部级课题增长数量和比率</button>
+                        <button type="button" data-ai-question="今年省部级课题有多少项？">今年省部级课题有多少项？</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <form class="ai-widget-composer" data-ai-form>
+            {% csrf_token %}
+            <div class="ai-widget-model-row">
+                <label for="ai-assistant-model"><i class="fas fa-microchip"></i> 回答模型</label>
+                <select id="ai-assistant-model" data-ai-model-select {% if not ai_model_options %}disabled{% endif %}>
+                    {% for option in ai_model_options %}
+                        <option value="{{ option.service_name }}" data-model-label="{{ option.service_label }} / {{ option.model_name }}">{{ option.service_label }} / {{ option.model_name }}</option>
+                    {% empty %}
+                        <option value="">未配置可用模型</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <label class="ai-visually-hidden" for="ai-assistant-question">向课题智能助手提问</label>
+            <textarea id="ai-assistant-question" data-ai-input rows="1" maxlength="500"
+                      placeholder="输入你的问题…" autocomplete="off"></textarea>
+            <button type="submit" data-ai-send aria-label="发送问题" disabled>
+                <i class="fas fa-arrow-up" aria-hidden="true"></i>
+            </button>
+            <p><i class="fas fa-shield-halved" aria-hidden="true"></i> 仅查询数据，不会修改课题</p>
+        </form>
+    </section>
+</aside>
+
+<script src="{% static 'core/js/query-assistant.js' %}?v=5.0" defer></script>

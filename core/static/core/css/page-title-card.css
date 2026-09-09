@@ -1,0 +1,85 @@
+/* 顶部导航主页面统一使用独立标题卡片。 */
+.standalone-title-card {
+  margin: 28px 0 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.standalone-title-card::after {
+  display: none;
+}
+
+.standalone-title-card .page-header-content {
+  position: relative;
+  min-height: 132px;
+  padding: 28px 30px;
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  background: linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.standalone-title-card .page-header-content::after {
+  content: '';
+  position: absolute;
+  right: -70px;
+  top: -110px;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: rgba(37, 99, 235, 0.07);
+  pointer-events: none;
+}
+
+.standalone-title-card .page-title {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: clamp(28px, 2vw, 32px);
+}
+
+.standalone-title-card .page-title i {
+  display: grid;
+  place-items: center;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  color: #fff;
+  background: var(--primary-color);
+  box-shadow: var(--shadow-primary);
+  font-size: 21px;
+}
+
+.standalone-title-card .page-subtitle {
+  position: relative;
+  z-index: 1;
+  margin: 9px 0 0 58px;
+  font-size: 16px;
+}
+
+.standalone-title-card .page-actions {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 768px) {
+  .standalone-title-card {
+    margin-top: 18px;
+    margin-bottom: 22px;
+  }
+
+  .standalone-title-card .page-header-content {
+    min-height: 0;
+    padding: 22px 20px;
+  }
+
+  .standalone-title-card .page-subtitle {
+    margin-left: 0;
+  }
+}

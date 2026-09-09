@@ -1,0 +1,27 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}科研课题管理系统{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=3.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/components.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/vendor/fontawesome/css/all.min.css' %}?v=6.0.0">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <div class="app-layout">
+        {% include 'core/partials/navbar.html' %}
+        <main class="app-main" id="main-content" tabindex="-1">
+            <div class="app-content">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

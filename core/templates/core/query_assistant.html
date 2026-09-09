@@ -1,0 +1,163 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}智能查询助手 - 科研课题管理系统{% endblock %}
+
+{% block extra_head %}
+    <link rel="stylesheet" href="{% static 'core/css/page-title-card.css' %}?v=1.0">
+    <link rel="stylesheet" href="{% static 'core/css/query-assistant.css' %}?v=1.1">
+{% endblock %}
+
+{% block body_class %}assistant-page{% endblock %}
+
+{% block content %}
+    <section class="page-header standalone-title-card assistant-hero">
+        <div class="container">
+            <div class="page-header-content">
+                <div>
+                    <h1 class="page-title">
+                        <i class="fas fa-robot"></i>
+                        智能查询助手
+                    </h1>
+                    <p class="page-subtitle">用一句话查询课题台账、结题计划和年度统计，数据截止 {{ today|date:"Y-m-d" }}</p>
+                </div>
+                <div class="assistant-mode-badge">
+                    <span class="assistant-mode-dot"></span>
+                    {% if ai_intent_ready %}AI意图解析已启用{% else %}常用问题本地解析{% endif %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="page-body">
+        <div class="container assistant-container">
+            <section class="assistant-query-card" aria-labelledby="assistant-query-title">
+                <div class="assistant-query-heading">
+                    <div class="assistant-avatar"><i class="fas fa-robot"></i></div>
+                    <div>
+                        <h2 id="assistant-query-title">你想了解什么？</h2>
+                        <p>试用版支持人员、年份、状态、级别、归口单位查询，以及年度数量和增长率比较。</p>
+                    </div>
+                </div>
+                <form method="get" action="{% url 'query_assistant' %}" class="assistant-query-form">
+                    <label class="visually-hidden" for="assistant-question">请输入课题查询问题</label>
+                    <textarea id="assistant-question" name="q" rows="2" maxlength="500" required
+                              placeholder="例如：今年有哪些课题要结题？">{{ question }}</textarea>
+                    <button type="submit" class="assistant-submit-button">
+                        <i class="fas fa-arrow-up"></i>
+                        <span>开始查询</span>
+                    </button>
+                </form>
+                <div class="assistant-examples" aria-label="示例问题">
+                    <span>试试这样问</span>
+                    {% for example in examples %}
+                        <a href="?q={{ example|urlencode }}">{{ example }}</a>
+                    {% endfor %}
+                </div>
+            </section>
+
+            {% if result %}
+                {% if result.ok %}
+                    <section class="assistant-result-card" aria-live="polite">
+                        <div class="assistant-result-head">
+                            <div>
+                                <span class="assistant-result-eyebrow"><i class="fas fa-wand-magic-sparkles"></i> 查询结果</span>
+                                <h2>{{ result.answer }}</h2>
+                            </div>
+                            <span class="assistant-source-badge">{{ result.source }}</span>
+                        </div>
+
+                        <div class="assistant-scope">
+                            <i class="fas fa-circle-info"></i>
+                            <div><strong>统计口径</strong><span>{{ result.scope }}</span></div>
+                        </div>
+
+                        {% if result.kind == 'comparison' %}
+                            <div class="assistant-comparison-grid">
+                                <div class="assistant-stat-card primary">
+                                    <span>{{ result.comparison.target_year }}年</span>
+                                    <strong>{{ result.comparison.target_count }}</strong>
+                                    <small>课题数量</small>
+                                </div>
+                                <div class="assistant-stat-card">
+                                    <span>{{ result.comparison.base_year }}年</span>
+                                    <strong>{{ result.comparison.base_count }}</strong>
+                                    <small>课题数量</small>
+                                </div>
+                                <div class="assistant-stat-card">
+                                    <span>数量变化</span>
+                                    <strong>{% if result.comparison.difference > 0 %}+{% endif %}{{ result.comparison.difference }}</strong>
+                                    <small>项目</small>
+                                </div>
+                                <div class="assistant-stat-card">
+                                    <span>增长率</span>
+                                    <strong>{{ result.comparison.growth_rate_text }}</strong>
+                                    <small>相对基期</small>
+                                </div>
+                            </div>
+                        {% elif result.kind == 'count' %}
+                            <div class="assistant-count-result">
+                                <strong>{{ result.total }}</strong>
+                                <span>项课题</span>
+                            </div>
+                        {% elif result.kind == 'project_list' %}
+                            <div class="assistant-table-wrap">
+                                <table class="assistant-result-table">
+                                    <thead>
+                                        <tr>
+                                            <th>课题编号</th>
+                                            <th>课题名称</th>
+                                            <th>开始年份</th>
+                                            <th>级别</th>
+                                            <th>状态</th>
+                                            <th>负责人</th>
+                                            {% if result.rows.0.person_roles %}<th>人员角色</th>{% endif %}
+                                            <th>有效结题日期</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for row in result.rows %}
+                                            <tr>
+                                                <td><span class="assistant-project-id">{{ row.project.project_id }}</span></td>
+                                                <td>
+                                                    <a href="{% url 'project_detail' row.project.project_id %}" class="assistant-project-link">
+                                                        {{ row.project.name }}
+                                                        <i class="fas fa-arrow-up-right-from-square"></i>
+                                                    </a>
+                                                </td>
+                                                <td>{{ row.project.start_year }}</td>
+                                                <td>{{ row.project.level|default:"—" }}</td>
+                                                <td><span class="assistant-status">{{ row.project.status }}</span></td>
+                                                <td>{{ row.project.project_lead|default:"—" }}</td>
+                                                {% if result.rows.0.person_roles %}<td>{{ row.person_roles|default:"—" }}</td>{% endif %}
+                                                <td>{% if row.effective_end_date %}{{ row.effective_end_date|date:"Y-m-d" }}{% else %}—{% endif %}</td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr><td colspan="8" class="assistant-empty-cell">没有符合当前口径的课题。</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% endif %}
+                    </section>
+                {% else %}
+                    <section class="assistant-error-card" role="alert">
+                        <i class="fas fa-circle-question"></i>
+                        <div>
+                            <h2>暂时没有理解这个问题</h2>
+                            <p>{{ result.error }}</p>
+                        </div>
+                    </section>
+                {% endif %}
+            {% else %}
+                <section class="assistant-capability-grid" aria-label="当前支持的查询能力">
+                    <article><i class="fas fa-user"></i><h3>按人员查课题</h3><p>同时识别课题负责人和联系人，并标明人员角色。</p></article>
+                    <article><i class="fas fa-calendar-check"></i><h3>查结题计划</h3><p>延期日期优先于计划日期，并可排除已结束课题。</p></article>
+                    <article><i class="fas fa-chart-column"></i><h3>做年度比较</h3><p>比较两个年份的课题数量、增减数量与增长率。</p></article>
+                </section>
+            {% endif %}
+
+            <p class="assistant-footnote"><i class="fas fa-shield-halved"></i> 助手仅执行只读白名单查询，不会生成 SQL，也不会修改课题数据。</p>
+        </div>
+    </div>
+{% endblock %}

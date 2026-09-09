@@ -1,79 +1,155 @@
 {% with current=request.resolver_match.url_name %}
 <header class="app-header">
-    <nav class="navbar">
+    <nav class="navbar" aria-label="主导航">
         <div class="navbar-container">
             <a href="{% url 'project_list' %}" class="navbar-brand">
-                <div class="navbar-brand-icon">
-                    <i class="fas fa-flask"></i>
-                </div>
-                科研课题管理系统
+                <div class="navbar-brand-icon"><i class="fas fa-flask"></i></div>
+                <span>科研课题管理系统</span>
             </a>
 
-            <ul class="navbar-nav">
-                <li class="navbar-nav-item">
-                    <a href="{% url 'project_list' %}" class="navbar-nav-link{% if current == 'project_list' or current == 'project_detail' or current == 'create_project' or current == 'delete_project' %} active{% endif %}">
-                        <i class="fas fa-list"></i>
-                        课题列表
-                    </a>
+            <button class="navbar-toggle" type="button" aria-label="打开主导航" aria-controls="primary-navigation" aria-expanded="false">
+                <span class="navbar-toggle-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+            </button>
+
+            <ul class="navbar-nav" id="primary-navigation">
+                <li class="navbar-nav-item navbar-nav-group">
+                    <button type="button" class="navbar-nav-link navbar-nav-trigger{% if current == 'project_list' or current == 'self_funded_project_list' or current == 'project_detail' or current == 'delete_project' %} active{% endif %}" aria-expanded="false">
+                        <i class="fas fa-folder-tree"></i><span>课题管理</span><i class="fas fa-chevron-down navbar-nav-chevron"></i>
+                    </button>
+                    <div class="navbar-nav-dropdown">
+                        <a href="{% url 'project_list' %}" class="navbar-dropdown-link{% if current == 'project_list' or current == 'project_detail' and not is_self_funded or current == 'delete_project' and not is_self_funded %} active{% endif %}">
+                            <span class="navbar-dropdown-icon"><i class="fas fa-flask"></i></span>
+                            <span><strong>专项经费课题</strong><small>现有专项经费课题台账</small></span>
+                        </a>
+                        <a href="{% url 'self_funded_project_list' %}" class="navbar-dropdown-link{% if current == 'self_funded_project_list' or current == 'project_detail' and is_self_funded or current == 'delete_project' and is_self_funded %} active{% endif %}">
+                            <span class="navbar-dropdown-icon"><i class="fas fa-seedling"></i></span>
+                            <span><strong>企业全自筹课题</strong><small>独立管理全自筹课题</small></span>
+                        </a>
+                    </div>
                 </li>
+
                 <li class="navbar-nav-item">
                     <a href="{% url 'statistics' %}" class="navbar-nav-link{% if current == 'statistics' %} active{% endif %}">
-                        <i class="fas fa-chart-bar"></i>
-                        统计分析
+                        <i class="fas fa-chart-column"></i><span>统计分析</span>
                     </a>
                 </li>
-                <li class="navbar-nav-item">
-                    <a href="{% url 'progress_monitor' %}" class="navbar-nav-link{% if current == 'progress_monitor' %} active{% endif %}">
-                        <i class="fas fa-tasks"></i>
-                        进度监控
-                    </a>
+
+                <li class="navbar-nav-item navbar-nav-group">
+                    <button type="button" class="navbar-nav-link navbar-nav-trigger{% if current == 'progress_monitor' or current == 'self_funded_progress_monitor' or current == 'expense_monitor' or current == 'self_funded_expense_monitor' or current == 'expense_import' or current == 'expense_mapping' %} active{% endif %}" aria-expanded="false">
+                        <i class="fas fa-gauge-high"></i><span>监控中心</span><i class="fas fa-chevron-down navbar-nav-chevron"></i>
+                    </button>
+                    <div class="navbar-nav-dropdown">
+                        <a href="{% url 'progress_monitor' %}" class="navbar-dropdown-link{% if current == 'progress_monitor' or current == 'self_funded_progress_monitor' %} active{% endif %}">
+                            <span class="navbar-dropdown-icon"><i class="fas fa-list-check"></i></span>
+                            <span><strong>进度监控</strong><small>中期节点与超期风险</small></span>
+                        </a>
+                        <a href="{% url 'expense_monitor' %}" class="navbar-dropdown-link{% if current == 'expense_monitor' or current == 'self_funded_expense_monitor' or current == 'expense_import' or current == 'expense_mapping' %} active{% endif %}">
+                            <span class="navbar-dropdown-icon"><i class="fas fa-coins"></i></span>
+                            <span><strong>支出监控</strong><small>经费支出与预算预警</small></span>
+                        </a>
+                    </div>
                 </li>
-                <li class="navbar-nav-item">
-                    <a href="{% url 'expense_monitor' %}" class="navbar-nav-link{% if current == 'expense_monitor' or current == 'expense_import' or current == 'expense_mapping' %} active{% endif %}">
-                        <i class="fas fa-coins"></i>
-                        支出监控
-                    </a>
-                </li>
+
                 {% if is_system_admin %}
-                    <li class="navbar-nav-item">
-                        <a href="{% url 'api_config' %}" class="navbar-nav-link{% if current == 'api_config' %} active{% endif %}">
-                            <i class="fas fa-cog"></i>
-                            API配置
-                        </a>
-                    </li>
-                    <li class="navbar-nav-item">
-                        <a href="{% url 'settings' %}" class="navbar-nav-link{% if current == 'settings' or current == 'init_system' %} active{% endif %}">
-                            <i class="fas fa-wrench"></i>
-                            系统设置
-                        </a>
-                    </li>
+                <li class="navbar-nav-item">
+                    <a href="{% url 'settings' %}" class="navbar-nav-link{% if current == 'settings' or current == 'api_config' or current == 'user_management' or current == 'init_system' %} active{% endif %}">
+                        <i class="fas fa-gear"></i><span>系统配置</span>
+                    </a>
+                </li>
                 {% endif %}
+
+                <li class="navbar-nav-item navbar-mobile-only">
+                    <a href="{% url 'password_change' %}" class="navbar-nav-link{% if current == 'password_change' or current == 'password_change_done' %} active{% endif %}">
+                        <i class="fas fa-key"></i><span>修改密码</span>
+                    </a>
+                </li>
+                <li class="navbar-nav-item navbar-mobile-only">
+                    <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+                        <button type="submit" class="navbar-nav-link navbar-mobile-form-button"><i class="fas fa-right-from-bracket"></i><span>退出登录</span></button>
+                    </form>
+                </li>
             </ul>
 
             <div class="navbar-actions">
                 {% if is_system_admin %}
-                    <a href="{% url 'user_management' %}" class="navbar-action-btn" title="用户管理" aria-label="用户管理">
-                        <i class="fas fa-users-gear"></i>
-                    </a>
-                {% endif %}
-                <a href="{% url 'password_change' %}" class="navbar-action-btn" title="修改密码" aria-label="修改密码">
-                    <i class="fas fa-key"></i>
+                <a href="{% url 'create_project' %}" class="navbar-create-btn{% if current == 'create_project' %} active{% endif %}" aria-label="新建课题">
+                    <i class="fas fa-plus"></i><span>新建课题</span>
                 </a>
+                {% endif %}
                 <div class="navbar-user">
                     {% firstof request.user.first_name request.user.username as display_name %}
-                    <div class="navbar-user-toggle" aria-label="当前用户">
+                    <button type="button" class="navbar-user-toggle" aria-label="打开用户菜单" aria-expanded="false">
                         <div class="navbar-user-avatar">{{ display_name|slice:":1" }}</div>
-                        <span>{{ display_name }} · {% if is_system_admin %}管理员{% else %}只读{% endif %}</span>
+                        <span class="navbar-user-name">{{ display_name }}</span>
+                        <span class="navbar-user-role">{% if is_system_admin %}管理员{% else %}只读{% endif %}</span>
+                        <i class="fas fa-chevron-down navbar-user-chevron" aria-hidden="true"></i>
+                    </button>
+                    <div class="navbar-user-dropdown">
+                        <div class="navbar-user-summary"><strong>{{ display_name }}</strong><span>{% if is_system_admin %}系统管理员{% else %}只读用户{% endif %}</span></div>
+                        {% if is_system_admin %}
+                        <a href="{% url 'settings' %}" class="navbar-user-dropdown-item"><i class="fas fa-gear"></i> 系统配置</a>
+                        <a href="{% url 'user_management' %}" class="navbar-user-dropdown-item"><i class="fas fa-users-gear"></i> 用户管理</a>
+                        <div class="navbar-user-dropdown-divider"></div>
+                        {% endif %}
+                        <a href="{% url 'password_change' %}" class="navbar-user-dropdown-item"><i class="fas fa-key"></i> 修改密码</a>
+                        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="navbar-user-dropdown-item navbar-user-dropdown-button"><i class="fas fa-right-from-bracket"></i> 退出登录</button></form>
                     </div>
                 </div>
-                <form method="post" action="{% url 'logout' %}" style="margin: 0;">
-                    {% csrf_token %}
-                    <button type="submit" class="navbar-action-btn" title="退出登录" aria-label="退出登录">
-                        <i class="fas fa-right-from-bracket"></i>
-                    </button>
-                </form>
             </div>
         </div>
     </nav>
 </header>
+<script>
+    (() => {
+        const currentScript = document.currentScript;
+        const header = currentScript && currentScript.previousElementSibling;
+        if (!header || !header.classList.contains('app-header')) return;
+        const toggle = header.querySelector('.navbar-toggle');
+        const navigation = header.querySelector('#primary-navigation');
+        const groupTriggers = [...header.querySelectorAll('.navbar-nav-trigger')];
+        const userMenu = header.querySelector('.navbar-user');
+        const userToggle = header.querySelector('.navbar-user-toggle');
+
+        const closeGroups = (except = null) => groupTriggers.forEach((trigger) => {
+            if (trigger === except) return;
+            trigger.parentElement.classList.remove('show');
+            trigger.setAttribute('aria-expanded', 'false');
+        });
+        const closeUserMenu = () => {
+            if (!userMenu || !userToggle) return;
+            userMenu.classList.remove('show');
+            userToggle.setAttribute('aria-expanded', 'false');
+        };
+        const setNavigationOpen = (open) => {
+            navigation.classList.toggle('show', open);
+            toggle.classList.toggle('active', open);
+            toggle.setAttribute('aria-expanded', String(open));
+            toggle.setAttribute('aria-label', open ? '关闭主导航' : '打开主导航');
+            if (!open) closeGroups();
+        };
+
+        toggle.addEventListener('click', () => setNavigationOpen(toggle.getAttribute('aria-expanded') !== 'true'));
+        groupTriggers.forEach((trigger) => trigger.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const willOpen = !trigger.parentElement.classList.contains('show');
+            closeGroups(trigger);
+            closeUserMenu();
+            trigger.parentElement.classList.toggle('show', willOpen);
+            trigger.setAttribute('aria-expanded', String(willOpen));
+        }));
+        if (userToggle) userToggle.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const willOpen = !userMenu.classList.contains('show');
+            closeGroups();
+            userMenu.classList.toggle('show', willOpen);
+            userToggle.setAttribute('aria-expanded', String(willOpen));
+        });
+        navigation.addEventListener('click', (event) => {
+            if (event.target.closest('a') && window.innerWidth <= 768) setNavigationOpen(false);
+        });
+        document.addEventListener('click', () => { closeGroups(); closeUserMenu(); });
+        window.addEventListener('resize', () => { if (window.innerWidth > 768) setNavigationOpen(false); });
+    })();
+</script>
+{% include 'core/partials/query_assistant_widget.html' %}
 {% endwith %}

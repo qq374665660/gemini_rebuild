@@ -4,13 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>课题进度监控 - 科研课题管理系统</title>
+    <title>{{ funding_category_label }}进度监控 - 科研课题管理系统</title>
     <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
-    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=3.0">
     <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
     <link rel="stylesheet" href="{% static 'core/css/components.css' %}?v=2.0">
     <link rel="stylesheet" href="{% static 'core/css/progress-monitor.css' %}?v=1.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'core/css/page-title-card.css' %}?v=1.0">
+    <link rel="stylesheet" href="{% static 'core/vendor/fontawesome/css/all.min.css' %}?v=6.0.0">
 </head>
 <body>
     <div class="app-layout">
@@ -18,20 +19,20 @@
 
         <main class="app-main">
             <div class="app-content">
-                <div class="page-header monitor-hero">
+                <div class="page-header monitor-hero standalone-title-card">
                     <div class="container">
                         <div class="page-header-content">
                             <div>
                                 <h1 class="page-title">
                                     <i class="fas fa-flag-checkered"></i>
-                                    课题进度监控
+                                    {{ funding_category_label }}进度监控
                                 </h1>
                                 <p class="page-subtitle">
-                                    统一判断中期节点与超期风险，截止日期 {{ today|date:"Y-m-d" }}
+                                    统一判断中期节点与超期风险，截止日期 {{ today|date:"Y-m-d" }} · 当前范围：{{ funding_category_label }}
                                 </p>
                             </div>
                             <div class="page-actions">
-                                <a href="{% url 'project_list' %}" class="btn btn-secondary">
+                                <a href="{{ scope_url }}" class="btn btn-secondary">
                                     <i class="fas fa-arrow-left"></i>
                                     返回课题列表
                                 </a>
@@ -108,6 +109,7 @@
                                 </div>
                                 <div class="content-section-body">
                                     <form class="monitor-filter-form" method="get">
+                                        <input type="hidden" name="funding_category" value="{{ funding_category }}">
                                         <div class="monitor-filter-row">
                                             <div class="form-group">
                                                 <label for="q">关键词</label>
@@ -146,7 +148,7 @@
                                                 <i class="fas fa-search"></i>
                                                 立即查询
                                             </button>
-                                            <a href="{% url 'progress_monitor' %}" class="btn btn-text">
+                                            <a href="{% if is_self_funded %}{% url 'self_funded_progress_monitor' %}{% else %}{% url 'progress_monitor' %}{% endif %}" class="btn btn-text">
                                                 <i class="fas fa-rotate-left"></i>
                                                 清空筛选
                                             </a>
@@ -240,6 +242,17 @@
                                         </div>
                                     {% endfor %}
                                 </div>
+                                {% if page_obj.has_other_pages %}
+                                    <nav class="pagination" aria-label="进度监控分页">
+                                        {% if page_obj.has_previous %}
+                                            <a class="pagination-link" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">上一页</a>
+                                        {% endif %}
+                                        <span>第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页，共 {{ page_obj.paginator.count }} 项</span>
+                                        {% if page_obj.has_next %}
+                                            <a class="pagination-link" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">下一页</a>
+                                        {% endif %}
+                                    </nav>
+                                {% endif %}
                             </div>
                         </div>
                     </div>

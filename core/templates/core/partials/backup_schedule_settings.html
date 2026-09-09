@@ -1,0 +1,63 @@
+{% if backup_schedule.available %}
+    <div class="backup-status-grid">
+        <div><strong>当前计划：</strong>每隔 {{ backup_schedule.interval_days }} 天，于 {{ backup_schedule.time }} 执行</div>
+        <div>
+            <strong>自动备份：</strong>
+            {% if backup_schedule.enabled %}<span class="badge bg-success">已启用</span>{% else %}<span class="badge bg-secondary">已停用</span>{% endif %}
+        </div>
+        <div><strong>下次执行：</strong>{{ backup_schedule.next_run_time|default:"等待计划任务计算" }}</div>
+        <div><strong>上次执行：</strong>{{ backup_schedule.last_run_time|default:"暂无记录" }}</div>
+        <div>
+            <strong>上次结果：</strong>
+            {% if backup_schedule.preview %}
+                <span class="badge bg-secondary">开发预览</span>
+            {% elif backup_schedule.last_result_success %}
+                <span class="badge bg-success">成功</span>
+            {% else %}
+                <span class="badge bg-danger">失败（代码 {{ backup_schedule.last_result }}）</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <form method="post" onsubmit="return confirm('确认保存自动备份的启停状态、间隔和时间吗？备份脚本和备份目录不会改变。');">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_backup_schedule">
+        <div class="backup-schedule-form-grid">
+            <div>
+                <label for="backup_interval_days" class="form-label">备份间隔（天）</label>
+                <input type="number" class="form-control" id="backup_interval_days" name="backup_interval_days"
+                       value="{{ backup_schedule.interval_days }}" min="1" max="3650" step="1" required
+                       {% if backup_schedule.read_only %}disabled{% endif %}>
+            </div>
+            <div>
+                <label for="backup_time" class="form-label">执行时间</label>
+                <input type="time" class="form-control" id="backup_time" name="backup_time"
+                       value="{{ backup_schedule.time }}" required {% if backup_schedule.read_only %}disabled{% endif %}>
+            </div>
+            <div>
+                <label class="form-label" for="backup_enabled">自动备份状态</label>
+                <div class="form-check" style="padding-top: 0.5rem;">
+                    <input class="form-check-input" type="checkbox" id="backup_enabled" name="backup_enabled"
+                           {% if backup_schedule.enabled %}checked{% endif %} {% if backup_schedule.read_only %}disabled{% endif %}>
+                    <label class="form-check-label" for="backup_enabled">启用自动备份</label>
+                </div>
+            </div>
+            <div class="backup-schedule-action">
+                <button type="submit" class="btn btn-primary" {% if backup_schedule.read_only %}disabled{% endif %}>
+                    <i class="fas fa-calendar-check"></i> 调整备份计划
+                </button>
+            </div>
+        </div>
+        <div class="form-text mt-2">例如填写 3，表示每隔 3 天执行一次。</div>
+    </form>
+
+    {% if backup_schedule.read_only %}
+        <div class="alert alert-info mt-3 mb-0"><i class="fas fa-shield-alt"></i> 当前为开发环境，以上为界面预览，不连接或修改正式备份任务。</div>
+    {% else %}
+        <div class="form-text mt-2">此操作只调整 <code>{{ backup_schedule.task_name }}</code> 的启停状态、执行间隔和时间，不会修改备份脚本、目标目录、保留份数或运行账户。</div>
+    {% endif %}
+{% else %}
+    <div class="alert alert-warning mb-3"><i class="fas fa-exclamation-triangle"></i> 无法读取自动备份计划：{{ backup_schedule.error }}</div>
+    <button type="button" class="btn btn-primary" disabled><i class="fas fa-calendar-check"></i> 调整备份计划</button>
+    {% if backup_schedule.read_only %}<div class="form-text mt-2">开发环境不会连接或修改正式服务器的计划任务。</div>{% endif %}
+{% endif %}

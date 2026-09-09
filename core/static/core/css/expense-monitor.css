@@ -87,6 +87,92 @@
     align-items: center;
 }
 
+.expense-help-text {
+    margin: 0;
+    color: var(--text-secondary);
+    line-height: 1.7;
+}
+
+.expense-company-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.expense-company-summary-card {
+    padding: 20px;
+    border: 1px solid var(--stroke);
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--bg-primary), var(--bg-secondary));
+}
+
+.expense-company-summary-card h4 {
+    margin: 0 0 12px;
+    color: var(--text-primary);
+    font-size: 15px;
+}
+
+.expense-company-total {
+    color: var(--primary-color);
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.expense-company-total small {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.expense-company-detail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-top: 14px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.expense-other-company-note {
+    margin-top: 14px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--warning-light);
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.expense-inline-filter {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.expense-inline-filter label {
+    color: var(--text-secondary);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.expense-inline-filter input {
+    width: 88px;
+}
+
+.expense-profit-center-list {
+    display: grid;
+    gap: 4px;
+    min-width: 220px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    white-space: normal;
+}
+
+.expense-profit-center-list span + span {
+    padding-top: 4px;
+    border-top: 1px dashed var(--border-light);
+}
+
 @media (max-width: 768px) {
     .expense-filter-form {
         align-items: stretch;
@@ -99,5 +185,14 @@
     .mapping-controls {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .expense-company-summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .expense-inline-filter {
+        margin-top: 12px;
+        flex-wrap: wrap;
     }
 }

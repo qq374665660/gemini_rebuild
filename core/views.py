@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from collections import defaultdict
 from django.conf import settings
 from django.urls import reverse
 from django.db.models import Q, Count
@@ -11,16 +12,32 @@ import mimetypes
 import time
 import tempfile
 import subprocess
-from difflib import SequenceMatcher
+import uuid
+import hashlib
 from decimal import Decimal
 from django.db import transaction
-from .models import Project, ProjectAnalysis, APIConfig, MetricsItem, ExpenseImport, ExpenseSnapshot, ExpenseMapping, OperationLog
+from .models import (
+    Project,
+    ProjectAnalysis,
+    APIConfig,
+    MetricsItem,
+    MetricsCategory,
+    MetricIndicatorDefinition,
+    MetricEvidence,
+    ExpenseImport,
+    ExpenseSnapshot,
+    ExpenseMapping,
+    OperationLog,
+)
 from .forms import ProjectForm
 import openpyxl
 from django.contrib import messages
 from django.contrib.auth import get_user_model, update_session_auth_hash
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.core.cache import cache
+from django.core.paginator import Paginator
+from django.template.loader import render_to_string
 import json
 import requests
 from django.utils import timezone
@@ -29,12 +46,35 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from urllib.parse import quote
 from django.views.decorators.http import require_POST
-from .docx_task_extractor import extract_task_docx
+from .docx_task_extractor import extract_task_docx, extract_task_pdf
 from . import backup_schedule as backup_scheduler
 from django.utils.dateparse import parse_date
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from .access import is_system_admin
+from .analysis_parsing import parse_ai_analysis, parse_metrics_text
+from .query_assistant import answer_project_question
+from .ai_providers import (
+    config_is_usable,
+    get_model_name,
+    post_chat_completion,
+    provider_defaults,
+    provider_payload,
+    ready_configs,
+)
+from .expense_analysis import (
+    EXPENSE_FORMAT_VERSION,
+    EXPENSE_UNIT_LABEL,
+    TARGET_COMPANIES,
+    ExpenseWorkbookError,
+    abbreviate_company_name,
+    analyze_expense_workbook,
+    clean_match_text,
+    file_sha256,
+    inspect_expense_workbook,
+    normalized_expense_description,
+    similarity_score,
+)
 
 def _normalize_path(path_str):
     normalized = os.path.normpath(path_str)
@@ -72,12 +112,17 @@ def _relpath_for_tree(item_path, base_path):
         rel_path = str(item_path)
     return rel_path.replace('\\', '/')
 
+def _get_progress_end_date(project):
+    """进度监控使用延期日期；未填写延期日期时使用计划结题日期。"""
+    return project.extension_date or project.planned_end_date
+
+
 def _compute_progress_node(project, today):
     completed_statuses = {'结题', '终止'}
     completed = project.status in completed_statuses or bool(project.actual_completion_date)
 
     start_date = project.start_date
-    end_date = project.extension_date or project.planned_end_date
+    end_date = _get_progress_end_date(project)
     progress_available = bool(start_date and end_date)
 
     midpoint_date = None
@@ -140,22 +185,11 @@ def _compute_progress_node(project, today):
 
 
 def _clean_match_text(value):
-    if value is None:
-        return ''
-    text_value = str(value).strip().lower()
-    if not text_value:
-        return ''
-    text_value = re.sub(r'\s+', '', text_value)
-    text_value = re.sub(r'[^0-9a-zA-Z\u4e00-\u9fff]+', '', text_value)
-    return text_value
+    return clean_match_text(value)
 
 
 def _similarity_score(left, right):
-    if not left or not right:
-        return 0.0
-    if left in right or right in left:
-        return 1.0
-    return SequenceMatcher(None, left, right).ratio()
+    return similarity_score(left, right)
 
 
 def _parse_threshold(value, default=0.85):
@@ -298,6 +332,22 @@ def _apply_project_filters(queryset, request):
         queryset = queryset.filter(planned_end_date__lte=end_date_to)
 
     return queryset
+
+
+def _valid_funding_category(value):
+    value = str(value or '').strip()
+    valid = {key for key, _label in Project.FUNDING_CATEGORY_CHOICES}
+    return value if value in valid else 'special'
+
+
+def _funding_context(category):
+    labels = dict(Project.FUNDING_CATEGORY_CHOICES)
+    return {
+        'funding_category': category,
+        'funding_category_label': labels.get(category, labels['special']),
+        'is_self_funded': category == 'self_funded',
+        'scope_url': reverse('self_funded_project_list') if category == 'self_funded' else reverse('project_list'),
+    }
 
 
 def _get_completion_date(project):
@@ -475,16 +525,100 @@ def get_directory_tree(path, base_path=None):
         tree.append(node)
     return tree
 
+
+def get_directory_level(path, base_path=None):
+    """读取单层目录，文件夹内容在用户展开时再按需获取。"""
+    import datetime
+
+    def format_file_size(size_bytes):
+        if size_bytes == 0:
+            return "0 B"
+        size_names = ["B", "KB", "MB", "GB"]
+        index = 0
+        value = float(size_bytes)
+        while value >= 1024 and index < len(size_names) - 1:
+            value /= 1024.0
+            index += 1
+        return f"{value:.1f} {size_names[index]}"
+
+    if base_path is None:
+        base_path = path
+    if not os.path.isdir(path):
+        return []
+
+    try:
+        with os.scandir(path) as scan_entries:
+            entries = sorted(scan_entries, key=lambda entry: entry.name.lower())
+    except OSError:
+        return []
+
+    nodes = []
+    for entry in entries:
+        item_path = entry.path
+        rel_path = _relpath_for_tree(item_path, base_path)
+        try:
+            is_directory = entry.is_dir(follow_symlinks=False)
+        except OSError:
+            is_directory = False
+
+        node = {
+            'name': entry.name,
+            'path': rel_path,
+            'type': 'folder' if is_directory else 'file',
+            'children': [],
+        }
+
+        if is_directory:
+            has_children = False
+            file_count = 0
+            folder_count = 0
+            try:
+                with os.scandir(item_path) as child_entries:
+                    for child in child_entries:
+                        has_children = True
+                        try:
+                            if child.is_dir(follow_symlinks=False):
+                                folder_count += 1
+                            else:
+                                file_count += 1
+                        except OSError:
+                            file_count += 1
+            except OSError:
+                pass
+            node.update({
+                'has_children': has_children,
+                'file_count': file_count,
+                'folder_count': folder_count,
+                'total_items': file_count + folder_count,
+            })
+        else:
+            try:
+                stat_result = entry.stat(follow_symlinks=False)
+                node['size'] = format_file_size(stat_result.st_size)
+                node['size_bytes'] = stat_result.st_size
+                node['modified_time'] = datetime.datetime.fromtimestamp(
+                    stat_result.st_mtime
+                ).strftime('%Y-%m-%d %H:%M')
+            except OSError:
+                node['size'] = "未知"
+                node['size_bytes'] = 0
+                node['modified_time'] = "未知"
+            node['has_children'] = False
+
+        nodes.append(node)
+    return nodes
+
 def create_project_view(request):
+    category = _valid_funding_category(request.POST.get('funding_category') or request.GET.get('funding_category'))
     if request.method == 'POST':
         form = ProjectForm(request.POST)
         if form.is_valid():
             project = form.save()
             create_project_directory_structure(project)
-            return redirect('project_list')
+            return redirect('self_funded_project_list' if project.funding_category == 'self_funded' else 'project_list')
     else:
-        form = ProjectForm()
-    return render(request, 'core/create_project.html', {'form': form})
+        form = ProjectForm(initial={'funding_category': category})
+    return render(request, 'core/create_project.html', {'form': form, **_funding_context(category)})
 
 def _normalize_text(value):
     if value is None:
@@ -734,11 +868,11 @@ def _convert_doc_to_docx(doc_path):
 def extract_task_docx_view(request):
     uploaded_file = request.FILES.get('document')
     if not uploaded_file:
-        return JsonResponse({'success': False, 'message': '\u8bf7\u9009\u62e9\u8981\u89e3\u6790\u7684Word\u6587\u6863\u3002'})
+        return JsonResponse({'success': False, 'message': '请选择要解析的任务书文件。'}, status=400)
 
     ext = os.path.splitext(uploaded_file.name)[1].lower()
-    if ext not in ['.docx', '.doc']:
-        return JsonResponse({'success': False, 'message': '\u4ec5\u652f\u6301.doc/.docx\u683c\u5f0f\u7684Word\u6587\u6863\u3002'})
+    if ext not in ['.docx', '.doc', '.pdf']:
+        return JsonResponse({'success': False, 'message': '仅支持 .doc、.docx 或 .pdf 格式的任务书。'}, status=400)
 
     temp_path = None
     converted_path = None
@@ -754,11 +888,11 @@ def extract_task_docx_view(request):
             converted_path, temp_dir = _convert_doc_to_docx(temp_path)
             parse_path = converted_path
 
-        extracted = extract_task_docx(parse_path)
+        extracted = extract_task_pdf(parse_path) if ext == '.pdf' else extract_task_docx(parse_path)
         mapped = _map_docx_to_project_fields(extracted)
         return JsonResponse({'success': True, 'data': mapped})
     except Exception as e:
-        return JsonResponse({'success': False, 'message': f'\u89e3\u6790\u5931\u8d25: {e}'})
+        return JsonResponse({'success': False, 'message': f'解析失败：{e}'}, status=422)
     finally:
         for path_to_remove in (temp_path, converted_path):
             if path_to_remove and os.path.exists(path_to_remove):
@@ -772,16 +906,34 @@ def extract_task_docx_view(request):
             except OSError:
                 pass
 
-def project_list_view(request):
-    queryset = _apply_project_filters(Project.objects.all(), request)
-    distinct_years = Project.objects.values_list('start_year', flat=True).distinct().order_by('-start_year')
-    distinct_statuses = Project.objects.values_list('status', flat=True).distinct().order_by('status')
-    distinct_levels = Project.objects.values_list('level', flat=True).distinct().order_by('level')
-    distinct_ownerships = Project.objects.values_list('ownership', flat=True).distinct().order_by('ownership')
-    distinct_types = Project.objects.values_list('project_type', flat=True).distinct().order_by('project_type')
-    distinct_roles = Project.objects.values_list('role', flat=True).distinct().order_by('role')
-    distinct_units = Project.objects.exclude(managing_unit__isnull=True).exclude(managing_unit__exact='').values_list('managing_unit', flat=True).distinct().order_by('managing_unit')
-    distinct_leads = Project.objects.exclude(project_lead__isnull=True).exclude(project_lead__exact='').values_list('project_lead', flat=True).distinct().order_by('project_lead')
+def project_list_view(request, funding_category=None):
+    category = _valid_funding_category(funding_category or request.GET.get('funding_category'))
+    scoped_projects = Project.objects.filter(funding_category=category)
+    queryset = _apply_project_filters(scoped_projects, request)
+    allowed_sorts = {
+        'name': 'name',
+        '-name': '-name',
+        'start_year': 'start_year',
+        '-start_year': '-start_year',
+        'status': 'status',
+        '-status': '-status',
+        'total_budget': 'total_budget',
+        '-total_budget': '-total_budget',
+        'external_funding': 'external_funding',
+        '-external_funding': '-external_funding',
+    }
+    sort = request.GET.get('sort', '-start_year')
+    if sort not in allowed_sorts:
+        sort = '-start_year'
+    queryset = queryset.order_by(allowed_sorts[sort], 'project_id')
+    distinct_years = scoped_projects.values_list('start_year', flat=True).distinct().order_by('-start_year')
+    distinct_statuses = scoped_projects.values_list('status', flat=True).distinct().order_by('status')
+    distinct_levels = scoped_projects.values_list('level', flat=True).distinct().order_by('level')
+    distinct_ownerships = scoped_projects.values_list('ownership', flat=True).distinct().order_by('ownership')
+    distinct_types = scoped_projects.values_list('project_type', flat=True).distinct().order_by('project_type')
+    distinct_roles = scoped_projects.values_list('role', flat=True).distinct().order_by('role')
+    distinct_units = scoped_projects.exclude(managing_unit__isnull=True).exclude(managing_unit__exact='').values_list('managing_unit', flat=True).distinct().order_by('managing_unit')
+    distinct_leads = scoped_projects.exclude(project_lead__isnull=True).exclude(project_lead__exact='').values_list('project_lead', flat=True).distinct().order_by('project_lead')
 
     selected_years = _extract_list_param(request, 'year')
     selected_statuses = _extract_list_param(request, 'status')
@@ -803,6 +955,31 @@ def project_list_view(request):
         selected_types, selected_roles, selected_units, selected_leads,
         min_budget, max_budget, start_date_from, start_date_to, end_date_from, end_date_to
     ])
+    active_filter_count = sum(bool(value) for value in [
+        query, selected_years, selected_statuses, selected_levels, selected_ownerships,
+        selected_types, selected_roles, selected_units, selected_leads,
+        min_budget, max_budget, start_date_from, start_date_to, end_date_from, end_date_to,
+    ])
+
+    def build_sort_link(field_name):
+        params = request.GET.copy()
+        params.pop('page', None)
+        params['sort'] = f'-{field_name}' if sort == field_name else field_name
+        if sort == field_name:
+            icon = 'fas fa-sort-up'
+            label = '当前升序，点击改为降序'
+        elif sort == f'-{field_name}':
+            icon = 'fas fa-sort-down'
+            label = '当前降序，点击改为升序'
+        else:
+            icon = 'fas fa-sort'
+            label = '点击排序'
+        return {'url': f'?{params.urlencode()}', 'icon': icon, 'label': label}
+
+    sort_links = {
+        field_name: build_sort_link(field_name)
+        for field_name in ('name', 'start_year', 'status', 'external_funding')
+    }
 
     # Summary stats
     from django.db.models import Sum
@@ -810,9 +987,15 @@ def project_list_view(request):
     completed_projects = queryset.filter(status__in=['结题', '终止']).count()
     ongoing_projects = total_projects - completed_projects
     total_budget = queryset.aggregate(Sum('total_budget'))['total_budget__sum'] or 0
+    paginator = Paginator(queryset, 30)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    pagination_params = request.GET.copy()
+    pagination_params.pop('page', None)
 
     context = {
-        'projects': queryset,
+        'projects': page_obj.object_list,
+        'page_obj': page_obj,
+        'pagination_query': pagination_params.urlencode(),
         'distinct_years': distinct_years,
         'distinct_statuses': distinct_statuses,
         'distinct_levels': distinct_levels,
@@ -841,12 +1024,17 @@ def project_list_view(request):
         'end_date_to': end_date_to,
         'query': query,
         'filters_applied': filters_applied,
+        'active_filter_count': active_filter_count,
+        'sort': sort,
+        'sort_links': sort_links,
+        **_funding_context(category),
     }
     return render(request, 'core/project_list.html', context)
 
 
-def export_project_list_view(request):
-    queryset = _apply_project_filters(Project.objects.all(), request)
+def export_project_list_view(request, funding_category=None):
+    category = _valid_funding_category(funding_category or request.GET.get('funding_category'))
+    queryset = _apply_project_filters(Project.objects.filter(funding_category=category), request)
 
     workbook = openpyxl.Workbook()
     worksheet = workbook.active
@@ -856,7 +1044,7 @@ def export_project_list_view(request):
         '课题编号', '课题名称', '课题归属', '归口单位', '课题级别', '课题类型', '参与角色',
         '开始年份', '课题状态', '课题联系人', '课题负责人', '开始日期', '计划结束日期',
         '延期时间', '实际结题时间', '总预算(万元)', '外部专项经费(万元)', '院自筹经费(万元)',
-        '所属单位自筹经费(万元)', '主要研究内容', '备注',
+        '所属单位自筹经费(万元)', '经费管理类别', '主要研究内容', '备注',
     ]
     worksheet.append(headers)
 
@@ -885,6 +1073,7 @@ def export_project_list_view(request):
             float(project.external_funding) if project.external_funding is not None else '',
             float(project.institute_funding) if project.institute_funding is not None else '',
             float(project.unit_funding) if project.unit_funding is not None else '',
+            project.get_funding_category_display(),
             project.research_content,
             project.remarks,
         ])
@@ -914,10 +1103,12 @@ def export_project_list_view(request):
     response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
     return response
 
-def progress_monitor_view(request):
-    queryset = Project.objects.all()
-    distinct_years = Project.objects.values_list('start_year', flat=True).distinct().order_by('-start_year')
-    distinct_statuses = Project.objects.values_list('status', flat=True).distinct().order_by('status')
+def progress_monitor_view(request, funding_category=None):
+    category = _valid_funding_category(funding_category or request.GET.get('funding_category'))
+    scoped_projects = Project.objects.filter(funding_category=category)
+    queryset = scoped_projects
+    distinct_years = scoped_projects.values_list('start_year', flat=True).distinct().order_by('-start_year')
+    distinct_statuses = scoped_projects.values_list('status', flat=True).distinct().order_by('status')
     progress_status_options = [
         {'value': 'ontrack', 'label': '\u672a\u5230\u4e2d\u671f'},
         {'value': 'midterm', 'label': '\u5df2\u5230\u4e2d\u671f'},
@@ -978,8 +1169,32 @@ def progress_monitor_view(request):
         counts['total'] += 1
         counts[node['status_key']] += 1
 
+    # 先保留原有的“在研/延期优先”顺序，作为各优先级分组内的稳定顺序。
+    monitor_rows.sort(
+        key=lambda row: 0 if row['project'].status in {'在研', '延期'} else 1
+    )
+
+    def display_priority(row):
+        if row['status_key'] == 'overdue':
+            return 0
+        if row['project'].status == '延期':
+            return 1
+        if row['status_key'] == 'midterm':
+            return 2
+        return 3
+
+    # 总览主顺序：超期、延期、已到中期；其余沿用上面的原有顺序。
+    monitor_rows.sort(key=display_priority)
+
+    paginator = Paginator(monitor_rows, 30)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    pagination_params = request.GET.copy()
+    pagination_params.pop('page', None)
+
     context = {
-        'monitor_rows': monitor_rows,
+        'monitor_rows': page_obj.object_list,
+        'page_obj': page_obj,
+        'pagination_query': pagination_params.urlencode(),
         'distinct_years': distinct_years,
         'distinct_statuses': distinct_statuses,
         'counts': counts,
@@ -989,319 +1204,338 @@ def progress_monitor_view(request):
         'selected_status': status or '',
         'progress_status_options': progress_status_options,
         'selected_progress_status': progress_status,
+        **_funding_context(category),
     }
     return render(request, 'core/progress_monitor.html', context)
 
 
-def expense_monitor_view(request):
-    sheet_name = 'Sheet2'
-    file_path = Path(settings.BASE_DIR) / 'zichouktfeiyong' / '19-26.XLSX'
-    threshold = _parse_threshold(request.GET.get('threshold'), default=0.85)
-    expense_unit_divisor = 10000.0
-    expense_unit_label = '万元'
-    today = timezone.localdate()
+def _expense_data_file_path():
+    configured = getattr(settings, 'EXPENSE_DATA_FILE', None)
+    if configured:
+        return Path(configured)
+    return Path(settings.BASE_DIR) / 'zichouktfeiyong' / '支出监控_当前月.xlsx'
 
+
+def expense_monitor_view(request, funding_category=None):
+    category = _valid_funding_category(funding_category or request.GET.get('funding_category'))
+    file_path = _expense_data_file_path()
+    threshold = _parse_threshold(request.GET.get('threshold'), default=0.85)
+    today = timezone.localdate()
+    projects = list(Project.objects.order_by('project_id'))
+    project_lookup = {project.project_id: project for project in projects}
+    project_options = [(project.project_id, project.name) for project in projects]
+    mapping_entries = list(ExpenseMapping.objects.select_related('project').all())
+
+    analysis = {
+        'sheet_name': '-',
+        'source_row_count': 0,
+        'filtered_rows': 0,
+        'ignored_account_rows': 0,
+        'description_group_total': 0,
+        'project_rows': [],
+        'matched_project_total': 0,
+        'unmatched_rows': [],
+        'negative_rows': [],
+        'over_budget_alerts': [],
+        'missing_budget_rows': [],
+        'company_summaries': [
+            {
+                'company': abbreviate_company_name(company),
+                'company_raw': company,
+                'total': Decimal('0'),
+                'matched_total': Decimal('0'),
+                'unmatched_total': Decimal('0'),
+                'row_count': 0,
+            }
+            for company in TARGET_COMPANIES
+        ],
+        'other_company_totals': {},
+        'other_company_total': Decimal('0'),
+        'total_expense_sum': Decimal('0'),
+        'invalid_amount_total': 0,
+    }
     file_exists = file_path.exists()
     file_mtime = None
+    current_file_hash = ''
+    imported = False
+    analysis_ready = False
+
     if file_exists:
         try:
-            file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.get_current_timezone())
-        except Exception:
-            file_mtime = None
-
-    company_groups = []
-    unmatched_rows = []
-    negative_rows = []
-    over_budget_alerts = []
-    total_rows = 0
-    total_expense_sum = 0.0
-
-    latest_import = ExpenseImport.objects.order_by('-created_at').first()
-    comparison_base = latest_import
-    imported = False
-    import_message = None
-
-    project_options = list(Project.objects.order_by('project_id').values_list('project_id', 'name'))
-    mapping_entries = ExpenseMapping.objects.select_related('project').all()
-    mapping_map = {m.normalized_text: m.project for m in mapping_entries if m.normalized_text}
-
-    if not file_exists:
-        messages.error(request, '找不到支出明细表，请确认文件路径存在。')
+            file_mtime = datetime.fromtimestamp(
+                file_path.stat().st_mtime,
+                tz=timezone.get_current_timezone(),
+            )
+            current_file_hash = file_sha256(file_path)
+            project_fingerprint = hashlib.sha256(repr((
+                [
+                    (
+                        project.project_id,
+                        project.name,
+                        str(project.total_budget),
+                        str(project.planned_end_date),
+                        str(project.extension_date),
+                        str(project.actual_completion_date),
+                        project.funding_category,
+                    )
+                    for project in projects
+                ],
+                [
+                    (mapping.normalized_text, mapping.project_id, str(mapping.updated_at))
+                    for mapping in mapping_entries
+                ],
+            )).encode('utf-8')).hexdigest()[:20]
+            analysis_cache_key = (
+                f'expense-analysis-v5:{current_file_hash}:{threshold:.4f}:{project_fingerprint}'
+            )
+            cached_analysis = cache.get(analysis_cache_key)
+            if cached_analysis is not None:
+                analysis = cached_analysis
+            else:
+                analysis = analyze_expense_workbook(
+                    file_path,
+                    projects,
+                    mappings=mapping_entries,
+                    threshold=threshold,
+                )
+                cache.set(analysis_cache_key, analysis, 1800)
+            analysis_ready = True
+        except ExpenseWorkbookError as exc:
+            messages.error(request, str(exc))
+        except Exception as exc:
+            messages.error(request, f'支出表分析失败：{exc}')
     else:
-        try:
-            import pandas as pd
-        except Exception:
-            messages.error(request, '无法读取Excel文件，请确认服务端已安装pandas。')
-            pd = None
+        messages.info(request, '尚未上传月度支出明细表。请上传包含6606数据的Excel文件。')
 
-        if file_exists and pd is not None:
-            try:
-                df = pd.read_excel(file_path, sheet_name=sheet_name)
-            except Exception as exc:
-                messages.error(request, f'读取Excel失败: {exc}')
-                df = None
-
-            if df is not None:
-                df.columns = [str(col).strip() for col in df.columns]
-                required_cols = {'公司名称', '科研课题文本描述', '期末余额'}
-                if not required_cols.issubset(df.columns):
-                    missing = required_cols - set(df.columns)
-                    messages.error(request, f'缺少必要列: {", ".join(sorted(missing))}')
-                else:
-                    df['期末余额'] = pd.to_numeric(df['期末余额'], errors='coerce').fillna(0)
-                    records = df.to_dict('records')
-
-                    projects = list(Project.objects.all())
-                    candidates = []
-                    for project in projects:
-                        clean_name = _clean_match_text(project.name)
-                        if clean_name:
-                            candidates.append({'project': project, 'clean': clean_name})
-
-                    aggregates = {}
-
-                    for row in records:
-                        company = str(row.get('公司名称') or '').strip()
-                        description = str(row.get('科研课题文本描述') or '').strip()
-                        amount_value = row.get('期末余额', 0)
-                        try:
-                            amount_raw = float(amount_value or 0)
-                        except (TypeError, ValueError):
-                            amount_raw = 0.0
-                        amount = amount_raw / expense_unit_divisor if expense_unit_divisor else amount_raw
-
-                        total_rows += 1
-                        total_expense_sum += amount
-
-                        if amount < 0:
-                            negative_rows.append({
-                                'company': company or '-'
-                                , 'description': description or '-'
-                                , 'amount': amount
-                            })
-
-                        if not description:
-                            unmatched_rows.append({
-                                'company': company or '-'
-                                , 'description': '-'
-                                , 'amount': amount
-                                , 'best_name': '-'
-                                , 'best_score': 0
-                            })
+    latest_import = None
+    comparison_base = None
+    if analysis_ready:
+        latest_import = ExpenseImport.objects.filter(
+            format_version=EXPENSE_FORMAT_VERSION,
+            file_sha256=current_file_hash,
+        ).order_by('-created_at').first()
+        if latest_import is None:
+            original_filename = request.session.pop('expense_original_filename', '')
+            with transaction.atomic():
+                latest_import, imported = ExpenseImport.objects.get_or_create(
+                    format_version=EXPENSE_FORMAT_VERSION,
+                    file_sha256=current_file_hash,
+                    defaults={
+                        'source_file': str(file_path),
+                        'sheet_name': analysis['sheet_name'],
+                        'original_filename': original_filename or file_path.name,
+                        'file_mtime': file_mtime,
+                        'threshold': threshold,
+                    },
+                )
+                if imported:
+                    snapshots = []
+                    for entry in analysis['project_rows']:
+                        project = project_lookup.get(entry['project_id'])
+                        if project is None:
                             continue
+                        snapshots.append(ExpenseSnapshot(
+                            import_log=latest_import,
+                            project=project,
+                            project_name=entry['project_name'],
+                            company_name=entry['company_names'][:100],
+                            matched_description=entry['sample_desc'] or '',
+                            match_score=entry['max_score'],
+                            total_expense=entry['total'],
+                            funding_category=project.funding_category,
+                        ))
+                    if snapshots:
+                        ExpenseSnapshot.objects.bulk_create(snapshots)
+            if imported:
+                messages.success(
+                    request,
+                    f'已生成新的月度快照：纳入 {analysis["filtered_rows"]} 条6606明细，'
+                    f'归并匹配 {analysis["matched_project_total"]} 个系统课题。',
+                )
 
-                        clean_desc = _clean_match_text(description)
-                        if len(clean_desc) > 512:
-                            clean_desc = clean_desc[:512]
-                        best_score = 0.0
-                        best_project = None
-                        match_method = 'auto'
-                        mapped_project = mapping_map.get(clean_desc)
-                        if mapped_project:
-                            best_project = mapped_project
-                            best_score = 1.0
-                            match_method = 'manual'
-                        else:
-                            for candidate in candidates:
-                                score = _similarity_score(clean_desc, candidate['clean'])
-                                if score > best_score:
-                                    best_score = score
-                                    best_project = candidate['project']
-                                    if best_score == 1.0:
-                                        break
+        comparison_base = ExpenseImport.objects.filter(
+            format_version=EXPENSE_FORMAT_VERSION,
+        ).exclude(pk=latest_import.pk).order_by('-created_at').first()
+    else:
+        latest_import = ExpenseImport.objects.filter(
+            format_version=EXPENSE_FORMAT_VERSION,
+        ).order_by('-created_at').first()
 
-                        if best_project and best_score >= threshold:
-                            group_name = best_project.managing_unit or '未设置归口单位'
-                            key = (group_name, best_project.project_id)
-                            entry = aggregates.get(key)
-                            if not entry:
-                                entry = {
-                                    'group_name': group_name,
-                                    'project': best_project,
-                                    'project_id': best_project.project_id,
-                                    'project_name': best_project.name,
-                                    'total': 0.0,
-                                    'max_score': best_score,
-                                    'sample_desc': description,
-                                    'row_count': 0,
-                                    'completion_date': _get_completion_date(best_project),
-                                    'budget_value': float(best_project.total_budget or 0) if best_project.total_budget is not None else None,
-                                    'over_budget': False,
-                                    'over_amount': 0.0,
-                                    'match_method': match_method,
-                                }
-                                aggregates[key] = entry
-                            entry['total'] += amount
-                            entry['row_count'] += 1
-                            if best_score >= entry['max_score']:
-                                entry['max_score'] = best_score
-                                entry['sample_desc'] = description
-                            if match_method == 'manual':
-                                entry['match_method'] = 'manual'
-                        else:
-                            unmatched_rows.append({
-                                'company': company or '-'
-                                , 'description': description
-                                , 'amount': amount
-                                , 'best_name': best_project.name if best_project else '-'
-                                , 'best_score': best_score
-                            })
-
-                    company_map = {}
-                    for entry in aggregates.values():
-                        budget_value = entry.get('budget_value')
-                        if budget_value and entry['total'] > budget_value + 0.01:
-                            entry['over_budget'] = True
-                            entry['over_amount'] = entry['total'] - budget_value
-                            over_budget_alerts.append({
-                                'group_name': entry['group_name'],
-                                'project_id': entry['project_id'],
-                                'project_name': entry['project_name'],
-                                'budget_value': budget_value,
-                                'total': entry['total'],
-                                'over_amount': entry['over_amount'],
-                            })
-
-                        company_map.setdefault(entry['group_name'], []).append(entry)
-
-                    for group_name, items in sorted(company_map.items(), key=lambda x: x[0]):
-                        items.sort(key=lambda x: x['total'], reverse=True)
-                        company_groups.append({
-                            'company': group_name,
-                            'rows': items,
-                            'total': sum(i['total'] for i in items),
-                        })
-
-                    should_save = False
-                    if file_mtime and (latest_import is None or (latest_import.file_mtime and file_mtime > latest_import.file_mtime) or (latest_import.file_mtime is None)):
-                        should_save = True
-
-                    if should_save:
-                        comparison_base = latest_import
-                        with transaction.atomic():
-                            new_import = ExpenseImport.objects.create(
-                                source_file=str(file_path),
-                                sheet_name=sheet_name,
-                                file_mtime=file_mtime,
-                                threshold=threshold,
-                            )
-                            snapshots = []
-                            for entry in aggregates.values():
-                                try:
-                                    amount_decimal = Decimal(str(round(entry['total'], 2)))
-                                except Exception:
-                                    amount_decimal = Decimal('0')
-                                snapshots.append(ExpenseSnapshot(
-                                    import_log=new_import,
-                                    project=entry['project'],
-                                    project_name=entry['project_name'],
-                                    company_name=entry['group_name'],
-                                    matched_description=entry['sample_desc'] or '',
-                                    match_score=entry['max_score'],
-                                    total_expense=amount_decimal,
-                                ))
-                            if snapshots:
-                                ExpenseSnapshot.objects.bulk_create(snapshots)
-
-                        imported = True
-                        latest_import = new_import
-                        import_message = '已检测到数据更新，已自动生成本次支出快照。'
-
-                    if import_message:
-                        messages.info(request, import_message)
+    scoped_project_ids = {
+        project.project_id for project in projects if project.funding_category == category
+    }
+    scoped_project_rows = [
+        entry for entry in analysis['project_rows']
+        if entry.get('project_id') in scoped_project_ids
+    ]
+    scoped_over_budget = [
+        entry for entry in analysis['over_budget_alerts']
+        if entry.get('project_id') in scoped_project_ids
+    ]
+    scoped_missing_budget = [
+        entry for entry in analysis['missing_budget_rows']
+        if entry.get('project_id') in scoped_project_ids
+    ]
+    scoped_company_totals = defaultdict(lambda: Decimal('0'))
+    for entry in scoped_project_rows:
+        for company in entry.get('company_breakdown', []):
+            scoped_company_totals[company.get('raw_name') or company.get('company') or ''] += company.get('total', Decimal('0'))
+    scoped_company_summaries = []
+    for company in TARGET_COMPANIES:
+        total = scoped_company_totals.get(company, Decimal('0'))
+        scoped_company_summaries.append({
+            'company': abbreviate_company_name(company),
+            'company_raw': company,
+            'total': total,
+            'matched_total': total,
+            'unmatched_total': Decimal('0'),
+            'row_count': 0,
+        })
+    scoped_other_company_totals = {
+        name: total for name, total in scoped_company_totals.items()
+        if name and name not in TARGET_COMPANIES
+    }
+    display_analysis = dict(analysis)
+    display_analysis.update({
+        'project_rows': scoped_project_rows,
+        'matched_project_total': len(scoped_project_rows),
+        'over_budget_alerts': scoped_over_budget,
+        'missing_budget_rows': scoped_missing_budget,
+        'company_summaries': scoped_company_summaries,
+        'other_company_totals': scoped_other_company_totals,
+        'other_company_total': sum(scoped_other_company_totals.values(), Decimal('0')),
+        'total_expense_sum': sum((entry.get('total', Decimal('0')) for entry in scoped_project_rows), Decimal('0')),
+    })
 
     growth_alerts = []
-    comparison_time = None
-    if comparison_base:
-        comparison_time = comparison_base.created_at
-        prev_map = {}
-        for snap in comparison_base.snapshots.select_related('project'):
-            if snap.project_id:
-                prev_map[snap.project_id] = float(snap.total_expense or 0)
+    comparison_time = comparison_base.created_at if comparison_base else None
+    if analysis_ready and comparison_base:
+        previous_totals = defaultdict(lambda: Decimal('0'))
+        for snapshot in comparison_base.snapshots.all():
+            if snapshot.project_id:
+                previous_totals[snapshot.project_id] += snapshot.total_expense or Decimal('0')
 
-        for group in company_groups:
-            for item in group['rows']:
-                completion_date = item.get('completion_date')
-                if completion_date and completion_date < today:
-                    prev_total = prev_map.get(item['project_id'])
-                    if prev_total is not None and item['total'] > prev_total + 0.01:
-                        growth_alerts.append({
-                            'group_name': group['company'],
-                            'project_id': item['project_id'],
-                            'project_name': item['project_name'],
-                            'completion_date': completion_date,
-                            'previous_total': prev_total,
-                            'current_total': item['total'],
-                            'increase': item['total'] - prev_total,
-                        })
+        for entry in scoped_project_rows:
+            completion_date = entry.get('completion_date')
+            previous_total = previous_totals[entry['project_id']]
+            if completion_date and completion_date <= today and entry['total'] > previous_total:
+                growth_alerts.append({
+                    'company_names': entry['company_names'],
+                    'profit_centers': entry['profit_centers'],
+                    'project_id': entry['project_id'],
+                    'project_name': entry['project_name'],
+                    'completion_date': completion_date,
+                    'previous_total': previous_total,
+                    'current_total': entry['total'],
+                    'increase': entry['total'] - previous_total,
+                })
+        growth_alerts.sort(key=lambda item: item['increase'], reverse=True)
 
-    unmatched_display = unmatched_rows[:200]
-    negative_display = negative_rows[:200]
+    unmatched_paginator = Paginator(analysis['unmatched_rows'], 25)
+    unmatched_page_obj = unmatched_paginator.get_page(request.GET.get('unmatched_page'))
+    unmatched_pagination_params = request.GET.copy()
+    unmatched_pagination_params.pop('unmatched_page', None)
+    other_company_rows = [
+        {'company': company, 'total': total}
+        for company, total in sorted(display_analysis['other_company_totals'].items())
+    ]
 
     context = {
-        'company_groups': company_groups,
-        'unmatched_rows': unmatched_display,
-        'unmatched_total': len(unmatched_rows),
-        'negative_rows': negative_display,
-        'negative_total': len(negative_rows),
-        'total_rows': total_rows,
-        'total_expense_sum': total_expense_sum,
+        **display_analysis,
+        'unmatched_rows': unmatched_page_obj.object_list,
+        'unmatched_page_obj': unmatched_page_obj,
+        'unmatched_pagination_query': unmatched_pagination_params.urlencode(),
+        'unmatched_total': len(analysis['unmatched_rows']),
+        'negative_rows': analysis['negative_rows'][:200],
+        'negative_total': len(analysis['negative_rows']),
+        'total_rows': analysis['filtered_rows'],
         'file_path': str(file_path),
-        'sheet_name': sheet_name,
+        'source_file_name': latest_import.original_filename if latest_import else file_path.name,
         'file_mtime': file_mtime,
         'threshold': threshold,
         'latest_import': latest_import,
         'comparison_time': comparison_time,
+        'has_comparison': comparison_base is not None,
         'growth_alerts': growth_alerts,
         'imported': imported,
-        'expense_unit_label': expense_unit_label,
-        'expense_unit_divisor': expense_unit_divisor,
-        'over_budget_alerts': over_budget_alerts,
-        'over_budget_total': len(over_budget_alerts),
+        'analysis_ready': analysis_ready,
+        'expense_unit_label': EXPENSE_UNIT_LABEL,
+        'over_budget_total': len(scoped_over_budget),
+        'missing_budget_total': len(scoped_missing_budget),
         'project_options': project_options,
+        'other_company_rows': other_company_rows,
+        'account_label': '6606',
+        'amount_column_label': '本年累计借方金额',
+        **_funding_context(category),
+        'expense_scope_note': '上传表保持混合；系统按已匹配课题的经费管理类别自动分流。未匹配明细仍在公共未匹配区展示。',
     }
     return render(request, 'core/expense_monitor.html', context)
 
 
 @require_POST
 def expense_import_view(request):
-    file_path = Path(settings.BASE_DIR) / 'zichouktfeiyong' / '19-26.XLSX'
+    category = _valid_funding_category(request.POST.get('funding_category'))
+    redirect_name = 'self_funded_expense_monitor' if category == 'self_funded' else 'expense_monitor'
+    file_path = _expense_data_file_path()
     upload = request.FILES.get('expense_file')
     if not upload:
         messages.error(request, '请选择要上传的Excel文件。')
-        return redirect('expense_monitor')
+        return redirect(redirect_name)
 
     ext = Path(upload.name).suffix.lower()
-    if ext not in {'.xlsx', '.xls'}:
-        messages.error(request, '仅支持Excel文件(.xlsx/.xls)。')
-        return redirect('expense_monitor')
+    if ext != '.xlsx':
+        messages.error(request, '月度支出明细目前仅支持 .xlsx 文件。')
+        return redirect(redirect_name)
 
+    temporary_path = None
     try:
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(file_path, 'wb') as handle:
+        fd, temporary_name = tempfile.mkstemp(
+            prefix='.expense-upload-',
+            suffix='.xlsx',
+            dir=str(file_path.parent),
+        )
+        os.close(fd)
+        temporary_path = Path(temporary_name)
+        with temporary_path.open('wb') as handle:
             for chunk in upload.chunks():
                 handle.write(chunk)
-        messages.success(request, '支出明细表已上传，系统将自动刷新匹配结果。')
+        sheet_name = inspect_expense_workbook(temporary_path)
+        os.replace(temporary_path, file_path)
+        temporary_path = None
+        request.session['expense_original_filename'] = Path(upload.name).name[:255]
+        messages.success(
+            request,
+            f'月度支出明细已上传，已识别工作表“{sheet_name}”；系统将按6606和本年累计借方金额生成快照。',
+        )
+    except ExpenseWorkbookError as exc:
+        messages.error(request, f'上传文件未生效：{exc}')
     except Exception as exc:
-        messages.error(request, f'上传失败: {exc}')
-    return redirect('expense_monitor')
+        messages.error(request, f'上传失败：{exc}')
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            try:
+                temporary_path.unlink()
+            except OSError:
+                pass
+    return redirect(redirect_name)
 
 
 @require_POST
 def expense_mapping_view(request):
+    category = _valid_funding_category(request.POST.get('funding_category'))
+    redirect_name = 'self_funded_expense_monitor' if category == 'self_funded' else 'expense_monitor'
     description = request.POST.get('description', '').strip()
     project_id = request.POST.get('project_id', '').strip()
     if not description or not project_id:
         messages.error(request, '请填写描述并选择匹配课题。')
-        return redirect('expense_monitor')
+        return redirect(redirect_name)
 
     project = get_object_or_404(Project, project_id=project_id)
-    normalized = _clean_match_text(description)
-    if len(normalized) > 512:
-        normalized = normalized[:512]
+    normalized = normalized_expense_description(description)[:512]
     if not normalized:
         messages.error(request, '描述无法转换成匹配文本，请检查输入。')
-        return redirect('expense_monitor')
+        return redirect(redirect_name)
 
     ExpenseMapping.objects.update_or_create(
         normalized_text=normalized,
@@ -1310,11 +1544,17 @@ def expense_mapping_view(request):
             'project': project,
         }
     )
-    messages.success(request, f'已映射课题：{project.name}')
-    redirect_url = reverse('expense_monitor')
+    messages.success(request, f'已将同名及自筹/专项后缀变体统一映射到：{project.name}')
+    redirect_url = reverse(redirect_name)
+    if category == 'self_funded':
+        redirect_url = f'{redirect_url}?funding_category=self_funded'
     threshold = request.POST.get('threshold', '').strip()
+    unmatched_page = request.POST.get('unmatched_page', '').strip()
     if threshold:
         redirect_url = f"{redirect_url}?threshold={threshold}"
+    if unmatched_page.isdigit():
+        separator = '&' if '?' in redirect_url else '?'
+        redirect_url = f"{redirect_url}{separator}unmatched_page={unmatched_page}#unmatched-records"
     return redirect(redirect_url)
 
 
@@ -1331,6 +1571,89 @@ def delete_project_view(request, project_id):
         messages.success(request, f"项目 {project.name} 已被成功删除。")
         return redirect('project_list')
     return render(request, 'core/delete_project.html', {'project': project})
+
+def _metric_identity(value):
+    return re.sub(r'[\s，。；：、,.;:（）()\-_]+', '', value or '').lower()
+
+
+def _normalize_metric_target(value, unit=''):
+    """把纯数字数量补成指标表里的常用写法，同时保留用户输入的复合目标。"""
+    normalized = str(value or '').strip()
+    if normalized and unit and re.fullmatch(r'\d+(?:\.\d+)?', normalized):
+        return f'{normalized}{unit}'
+    return normalized
+
+
+def _sync_metrics_items(analysis, extracted_items, extraction_source='ai'):
+    """同步任务书指标，更新来源字段但保留已填完成情况和佐证文件。"""
+    existing_items = list(analysis.metrics_items.all())
+    existing_by_name = {
+        _metric_identity(item.item_name): item
+        for item in existing_items
+        if _metric_identity(item.item_name)
+    }
+    created_count = 0
+    updated_count = 0
+    valid_categories = dict(MetricsItem.CATEGORY_CHOICES)
+
+    for order, item_data in enumerate(extracted_items, start=1):
+        item_name = str(item_data.get('item_name') or '').strip()
+        if not item_name:
+            continue
+        catalog_item = MetricsItem.get_catalog_item(item_name)
+        identity = _metric_identity(item_name)
+        metric = existing_by_name.get(identity)
+        defaults = {
+            'category': (
+                catalog_item['category'] if catalog_item
+                else item_data.get('category') if item_data.get('category') in valid_categories
+                else 'other'
+            ),
+            'item_name': item_name[:255],
+            'target_value': _normalize_metric_target(
+                item_data.get('target_value'),
+                catalog_item['unit'] if catalog_item else '',
+            )[:100],
+            'assessment_method': str(
+                item_data.get('assessment_method')
+                or (catalog_item['assessment_method'] if catalog_item else '')
+            )[:255],
+            'planned_period': str(item_data.get('planned_period') or '')[:100],
+            'source_section': str(item_data.get('source_section') or '')[:100],
+            'source_page': str(item_data.get('source_page') or '')[:50],
+            'sort_order': int(item_data.get('sort_order') or order),
+        }
+        parsed_deadline = parse_date(str(item_data.get('deadline') or ''))
+        if parsed_deadline:
+            defaults['deadline'] = parsed_deadline
+
+        source_notes = str(item_data.get('notes') or '').strip()
+        if metric:
+            for field_name, value in defaults.items():
+                setattr(metric, field_name, value)
+            if source_notes and not metric.notes:
+                metric.notes = source_notes
+            metric.save()
+            updated_count += 1
+        else:
+            metric = MetricsItem.objects.create(
+                analysis=analysis,
+                current_value='',
+                status='pending',
+                progress_percent=0,
+                notes=source_notes,
+                extraction_source=extraction_source,
+                **defaults,
+            )
+            existing_by_name[identity] = metric
+            created_count += 1
+    return created_count, updated_count
+
+
+def _metrics_redirect(project_id):
+    base_url = reverse('project_detail', kwargs={'project_id': project_id})
+    return redirect(f'{base_url}?tab=metrics-analysis')
+
 
 def project_detail_view(request, project_id):
     project = get_object_or_404(Project, project_id=project_id)
@@ -1397,9 +1720,7 @@ def project_detail_view(request, project_id):
         if project.directory_path and os.path.exists(project.directory_path):
             # 确保子目录结构最新（包含目录重命名）
             create_project_directory_structure(project)
-            print(f"开始获取文件树，目录路径: {project.directory_path}")  # 调试信息
-            file_tree = get_directory_tree(project.directory_path, project.directory_path)
-            print(f"文件树节点数: {len(file_tree)}")  # 调试信息
+            file_tree = get_directory_level(project.directory_path, project.directory_path)
             
             if not file_tree:
                 print(f"文件树为空，目录可能没有内容")  # 调试信息
@@ -1422,22 +1743,53 @@ def project_detail_view(request, project_id):
     research_analysis = project.analyses.filter(analysis_type='research_content').first()
     metrics_analysis = project.analyses.filter(analysis_type='output_metrics').first()
     
-    # Get metrics items grouped by category
+    # 按任务书分类组织指标，并计算完成概览和佐证文件可用性。
     metrics_items_by_category = {}
+    metrics_summary = {
+        'total': 0,
+        'completed': 0,
+        'in_progress': 0,
+        'overdue': 0,
+        'average_progress': 0,
+        'evidence_count': 0,
+    }
     if metrics_analysis:
-        metrics_items = metrics_analysis.metrics_items.all()
+        metrics_items = list(
+            metrics_analysis.metrics_items.prefetch_related('evidence_files').all()
+        )
+        today = timezone.localdate()
         for item in metrics_items:
-            category_display = item.get_category_display()
+            item.is_overdue = bool(item.deadline and item.deadline < today and item.status != 'completed')
+            for evidence in item.evidence_files.all():
+                evidence_abs_path = _build_abs_path(project.directory_path, evidence.relative_path)
+                evidence.is_available = bool(
+                    _is_within_root(evidence_abs_path, project.directory_path)
+                    and os.path.isfile(evidence_abs_path)
+                )
+            category_display = item.get_configured_category_display()
             if category_display not in metrics_items_by_category:
                 metrics_items_by_category[category_display] = []
             metrics_items_by_category[category_display].append(item)
+        metrics_summary['total'] = len(metrics_items)
+        metrics_summary['completed'] = sum(item.status == 'completed' for item in metrics_items)
+        metrics_summary['in_progress'] = sum(item.status == 'in_progress' for item in metrics_items)
+        metrics_summary['overdue'] = sum(item.is_overdue for item in metrics_items)
+        metrics_summary['evidence_count'] = sum(len(item.evidence_files.all()) for item in metrics_items)
+        if metrics_items:
+            metrics_summary['average_progress'] = round(
+                sum(item.progress_percent for item in metrics_items) / len(metrics_items)
+            )
     
     # Get API configuration status
     api_configs = APIConfig.objects.filter(is_active=True)
+    available_ai_configs = ready_configs()
     api_status = {
         'has_config': api_configs.exists(),
         'deepseek_available': api_configs.filter(service_name='deepseek', test_success=True).exists(),
         'kimi_available': api_configs.filter(service_name='kimi', test_success=True).exists(),
+        'local_available': api_configs.filter(service_name='local', test_success=True).exists(),
+        'ready_configs': available_ai_configs,
+        'has_ready_config': bool(available_ai_configs),
         'total_configs': api_configs.count()
     }
 
@@ -1458,6 +1810,9 @@ def project_detail_view(request, project_id):
         'research_analysis': research_analysis,
         'metrics_analysis': metrics_analysis,
         'metrics_items_by_category': metrics_items_by_category,
+        'metrics_summary': metrics_summary,
+        'metric_category_choices': MetricsItem.CATEGORY_CHOICES,
+        'metric_indicator_catalog': MetricsItem.get_indicator_catalog(),
         'api_status': api_status,
         'relative_directory_path': relative_directory_path,
         'enable_network_share': network_config.get('enable_network_share', False),
@@ -1466,6 +1821,7 @@ def project_detail_view(request, project_id):
         'protocol_setup_reg_path': protocol_setup_reg_path,
         'client_setup_reg_path': client_setup_reg_path,
         'active_tab': active_tab,
+        **_funding_context(project.funding_category),
     }
     return render(request, 'core/project_detail.html', context)
 
@@ -1490,38 +1846,33 @@ def file_manager_trial_view(request, project_id):
     })
 
 def get_file_tree_view(request, project_id):
-    """API端点：返回项目文件树的JSON数据"""
+    """API端点：按需返回项目某一层目录，避免递归扫描大型课题。"""
     project = get_object_or_404(Project, project_id=project_id)
     
     # 确保项目目录存在
     if not project.directory_path or not os.path.isdir(project.directory_path):
         create_project_directory_structure(project)
     
-    # 获取文件树数据
+    relative_path = request.GET.get('path', '').strip()
+    project_root = os.path.normpath(project.directory_path)
+    target_path = os.path.normpath(_build_abs_path(project_root, relative_path))
+    if not _is_within_root(target_path, project_root) or not os.path.isdir(target_path):
+        return JsonResponse({
+            'success': False,
+            'message': '无效或不存在的目录路径。',
+        }, status=400)
+
+    # 只获取当前目录的一层数据，子目录在展开时继续请求。
     file_tree = []
-    if project.directory_path and os.path.exists(project.directory_path):
-        # 确保子目录结构最新（包含目录重命名）
-        create_project_directory_structure(project)
-        file_tree = get_directory_tree(project.directory_path, project.directory_path)
-    
-    # 计算文件统计信息
-    total_files = 0
-    total_folders = 0
-    
-    def count_items(nodes):
-        nonlocal total_files, total_folders
-        for node in nodes:
-            if node['type'] == 'folder':
-                total_folders += 1
-                if node.get('children'):
-                    count_items(node['children'])
-            else:
-                total_files += 1
-    
-    count_items(file_tree)
+    if project_root and os.path.exists(project_root):
+        file_tree = get_directory_level(target_path, project_root)
+
+    total_files = sum(1 for node in file_tree if node['type'] == 'file')
+    total_folders = sum(1 for node in file_tree if node['type'] == 'folder')
     
     return JsonResponse({
         'success': True,
+        'path': _relpath_for_tree(target_path, project_root) if relative_path else '',
         'file_tree': file_tree,
         'stats': {
             'file_count': total_files,
@@ -1819,6 +2170,9 @@ def analyze_content_view(request, project_id, analysis_type):
     from .ai_analysis import ai_service
     
     project = get_object_or_404(Project, project_id=project_id)
+    if analysis_type not in dict(ProjectAnalysis.ANALYSIS_TYPE_CHOICES):
+        messages.error(request, '无效的分析类型。')
+        return redirect('project_detail', project_id=project.project_id)
     
     # 根据分析类型确定返回时的tab锚点
     tab_anchor_map = {
@@ -1833,25 +2187,44 @@ def analyze_content_view(request, project_id, analysis_type):
         
         if uploaded_file:
             # 使用AI分析服务处理文档
-            result = ai_service.analyze_document(uploaded_file, analysis_type)
+            service_name = (request.POST.get('ai_service') or '').strip()
+            result = ai_service.analyze_document(
+                uploaded_file,
+                analysis_type,
+                service_name=service_name or None,
+            )
             
             if result['success']:
-                # 保存或更新分析结果
-                analysis, created = ProjectAnalysis.objects.update_or_create(
-                    project=project,
-                    analysis_type=analysis_type,
-                    defaults={
-                        'file_name': uploaded_file.name,
-                        'file_size': uploaded_file.size,
-                        'analysis_result': result['result'],
-                        'confidence_score': result.get('confidence_score'),
-                        'processing_time': result['processing_time'],
-                    }
-                )
-                
+                with transaction.atomic():
+                    analysis, created = ProjectAnalysis.objects.update_or_create(
+                        project=project,
+                        analysis_type=analysis_type,
+                        defaults={
+                            'file_name': uploaded_file.name,
+                            'file_size': uploaded_file.size,
+                            'analysis_result': result['result'],
+                            'structured_data': result.get('structured_data') or {},
+                            'confidence_score': result.get('confidence_score'),
+                            'processing_time': result['processing_time'],
+                        }
+                    )
+                    created_metrics = updated_metrics = 0
+                    if analysis_type == 'output_metrics':
+                        created_metrics, updated_metrics = _sync_metrics_items(
+                            analysis,
+                            result.get('metrics') or [],
+                            extraction_source='ai',
+                        )
+
                 action = '创建' if created else '更新'
                 api_info = f" (使用{result.get('api_used', 'AI')}服务)" if result.get('api_used') else ""
-                messages.success(request, f'文档分析完成！{action}了{analysis.get_analysis_type_display()}结果。{api_info}')
+                metric_info = ''
+                if analysis_type == 'output_metrics':
+                    metric_info = f' 新增 {created_metrics} 项、刷新 {updated_metrics} 项，原有完成记录和佐证文件均已保留。'
+                messages.success(
+                    request,
+                    f'文档分析完成！{action}了{analysis.get_analysis_type_display()}结果。{metric_info}{api_info}',
+                )
             else:
                 # 分析失败，显示错误信息
                 messages.error(request, f'文档分析失败: {result["error"]}')
@@ -1863,114 +2236,72 @@ def analyze_content_view(request, project_id, analysis_type):
     return redirect(f'{base_url}?tab={tab_anchor}')
 
 def parse_metrics_analysis(analysis_text):
-    """解析产出指标分析文本，提取指标项目"""
-    metrics_items = []
-    
-    # 定义指标分类映射
-    category_mapping = {
-        '技术成果': 'technical',
-        '学术成果': 'academic', 
-        '标准制定': 'standard',
-        '人才培养': 'talent',
-        '经济效益': 'economic'
-    }
-    
-    lines = analysis_text.split('\n')
-    current_category = None
-    
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith('---') or line.startswith('###'):
-            continue
-            
-        # 检查是否是分类标题
-        for category_name, category_code in category_mapping.items():
-            if category_name in line and ('指标' in line or '成果' in line or '效益' in line):
-                current_category = category_code
-                break
-        
-        # 解析指标项目
-        if current_category and line.startswith('-'):
-            # 移除开头的 '-' 和空格
-            item_text = line.lstrip('- ').strip()
-            if ':' in item_text or '：' in item_text:
-                # 分割项目名称和目标值
-                if '：' in item_text:
-                    parts = item_text.split('：', 1)
-                else:
-                    parts = item_text.split(':', 1)
-                
-                if len(parts) == 2:
-                    item_name = parts[0].strip()
-                    target_value = parts[1].strip()
-                    
-                    # 提取括号中的详细信息作为备注
-                    notes = ''
-                    if '（' in target_value and '）' in target_value:
-                        start = target_value.find('（')
-                        end = target_value.find('）') + 1
-                        notes = target_value[start:end]
-                        target_value = target_value[:start].strip()
-                    elif '(' in target_value and ')' in target_value:
-                        start = target_value.find('(')
-                        end = target_value.find(')') + 1
-                        notes = target_value[start:end]
-                        target_value = target_value[:start].strip()
-                    
-                    metrics_items.append({
-                        'category': current_category,
-                        'item_name': item_name,
-                        'target_value': target_value,
-                        'notes': notes
-                    })
-    
-    return metrics_items
+    """兼容旧调用：优先解析任务书结构化 JSON，并兼容历史 Markdown。"""
+    return parse_metrics_text(analysis_text)
 
 
 def edit_analysis_view(request, project_id, analysis_type):
     """编辑分析结果的视图"""
     project = get_object_or_404(Project, project_id=project_id)
+    if analysis_type not in dict(ProjectAnalysis.ANALYSIS_TYPE_CHOICES):
+        messages.error(request, '无效的分析类型。')
+        return redirect('project_detail', project_id=project.project_id)
     
     if request.method == 'POST':
+        action = request.POST.get('action', 'save')
         analysis_result = request.POST.get('analysis_result', '').strip()
-        
-        if analysis_result:
-            # 创建或更新分析结果
-            analysis, created = ProjectAnalysis.objects.update_or_create(
-                project=project,
-                analysis_type=analysis_type,
-                defaults={
-                    'file_name': '手动编辑',
-                    'file_size': None,
-                    'analysis_result': analysis_result,
-                    'confidence_score': None,  # 手动编辑没有置信度
-                    'processing_time': None,
-                }
-            )
-            
-            # 如果是产出指标分析，解析并创建指标项目
-            if analysis_type == 'output_metrics':
-                # 删除现有的指标项目
-                analysis.metrics_items.all().delete()
-                
-                # 解析新的指标项目
-                metrics_items = parse_metrics_analysis(analysis_result)
-                
-                # 创建新的指标项目记录
-                for item_data in metrics_items:
-                    MetricsItem.objects.create(
-                        analysis=analysis,
-                        category=item_data['category'],
-                        item_name=item_data['item_name'],
-                        target_value=item_data['target_value'],
-                        notes=item_data['notes'],
-                        status='pending'  # 默认状态为待完成
-                    )
-                
-                messages.success(request, f'手动{"创建" if created else "更新"}了{analysis.get_analysis_type_display()}结果，解析出 {len(metrics_items)} 个指标项目。')
+
+        # 研究内容允许从页面明确删除；清空编辑框后保存也按删除处理，
+        # 避免旧 structured_data 继续把已删除的内容渲染出来。
+        if analysis_type == 'research_content' and (action == 'delete' or not analysis_result):
+            with transaction.atomic():
+                deleted_count, _ = ProjectAnalysis.objects.filter(
+                    project=project,
+                    analysis_type=analysis_type,
+                ).delete()
+                Project.objects.filter(pk=project.pk).update(research_content='')
+
+            if deleted_count:
+                messages.success(request, '研究内容分析结果已删除。')
             else:
-                action = '创建' if created else '更新'
-                messages.success(request, f'手动{action}了{analysis.get_analysis_type_display()}结果。')
+                messages.info(request, '当前没有可删除的研究内容分析结果。')
+        elif action == 'delete':
+            messages.error(request, '该分析类型不支持在此删除。')
+        
+        elif analysis_result:
+            display_result, structured_data, metrics_items = parse_ai_analysis(
+                analysis_result,
+                analysis_type,
+            )
+            with transaction.atomic():
+                analysis, created = ProjectAnalysis.objects.update_or_create(
+                    project=project,
+                    analysis_type=analysis_type,
+                    defaults={
+                        'file_name': '手动编辑',
+                        'file_size': None,
+                        'analysis_result': display_result,
+                        'structured_data': structured_data,
+                        'confidence_score': None,
+                        'processing_time': None,
+                    }
+                )
+                created_metrics = updated_metrics = 0
+                if analysis_type == 'output_metrics':
+                    created_metrics, updated_metrics = _sync_metrics_items(
+                        analysis,
+                        metrics_items,
+                        extraction_source='manual',
+                    )
+
+            if analysis_type == 'output_metrics':
+                messages.success(
+                    request,
+                    f'手动{"创建" if created else "更新"}了{analysis.get_analysis_type_display()}结果，'
+                    f'新增 {created_metrics} 项、刷新 {updated_metrics} 项；已有完成情况和佐证文件未被删除。',
+                )
+            else:
+                messages.success(request, f'手动{"创建" if created else "更新"}了{analysis.get_analysis_type_display()}结果。')
         else:
             messages.error(request, '分析结果内容不能为空。')
     
@@ -1985,33 +2316,158 @@ def edit_analysis_view(request, project_id, analysis_type):
 
 
 def update_metrics_item_view(request, project_id, item_id):
-    """更新指标项目状态的视图"""
+    """更新指标目标、考核方式及完成情况。"""
     if request.method == 'POST':
         item = get_object_or_404(MetricsItem, id=item_id, analysis__project__project_id=project_id)
-        
-        status = request.POST.get('status')
-        current_value = request.POST.get('current_value', '')
-        notes = request.POST.get('notes', '')
-        
-        if status in dict(MetricsItem.STATUS_CHOICES):
-            item.status = status
-            item.current_value = current_value
-            item.notes = notes
-            item.save()
-            
-            messages.success(request, f'已更新指标项目 "{item.item_name}" 的状态。')
-        else:
+        status = request.POST.get('status', item.status)
+        if status not in dict(MetricsItem.STATUS_CHOICES):
             messages.error(request, '无效的状态值。')
-    
-    return redirect('project_detail', project_id=project_id)
+            return _metrics_redirect(project_id)
+
+        requested_item_name = request.POST.get('item_name', item.item_name).strip()[:255] or item.item_name
+        catalog_item = MetricsItem.get_catalog_item(requested_item_name)
+        if not catalog_item and requested_item_name != item.item_name:
+            messages.error(request, '具体指标必须从指标清单中选择。')
+            return _metrics_redirect(project_id)
+        try:
+            progress_percent = max(0, min(100, int(request.POST.get('progress_percent', item.progress_percent))))
+        except (TypeError, ValueError):
+            progress_percent = item.progress_percent
+
+        if catalog_item:
+            item.category = catalog_item['category']
+        item.item_name = requested_item_name
+        item.target_value = _normalize_metric_target(
+            request.POST.get('target_value', item.target_value),
+            catalog_item['unit'] if catalog_item else '',
+        )[:100]
+        item.current_value = request.POST.get('current_value', item.current_value).strip()[:100]
+        item.assessment_method = request.POST.get(
+            'assessment_method',
+            catalog_item['assessment_method'] if catalog_item else item.assessment_method,
+        ).strip()[:255]
+        item.notes = request.POST.get('notes', item.notes).strip()
+        item.status = status
+        item.progress_percent = progress_percent
+
+        if item.status == 'completed' or item.progress_percent == 100:
+            item.status = 'completed'
+            item.progress_percent = 100
+            if not item.actual_completion_date:
+                item.actual_completion_date = timezone.localdate()
+        elif item.status == 'pending' and item.progress_percent > 0:
+            item.status = 'in_progress'
+        item.save()
+
+        message = f'已更新指标“{item.item_name}”的完成情况。'
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': True, 'message': message})
+        messages.success(request, message)
+    return _metrics_redirect(project_id)
+
+
+@require_POST
+def create_metrics_item_view(request, project_id):
+    project = get_object_or_404(Project, project_id=project_id)
+    item_name = request.POST.get('item_name', '').strip()
+    catalog_item = MetricsItem.get_catalog_item(item_name)
+    if not catalog_item:
+        messages.error(request, '请选择指标清单中的具体指标。')
+        return _metrics_redirect(project_id)
+    target_value = _normalize_metric_target(request.POST.get('target_value'), catalog_item['unit'])
+    if not target_value:
+        messages.error(request, '请填写目标数量。')
+        return _metrics_redirect(project_id)
+    analysis, _ = ProjectAnalysis.objects.get_or_create(
+        project=project,
+        analysis_type='output_metrics',
+        defaults={
+            'file_name': '手动录入',
+            'analysis_result': '手动维护的任务书指标',
+            'structured_data': {},
+        },
+    )
+    last_order = analysis.metrics_items.order_by('-sort_order').values_list('sort_order', flat=True).first() or 0
+    MetricsItem.objects.create(
+        analysis=analysis,
+        category=catalog_item['category'],
+        item_name=item_name[:255],
+        target_value=target_value[:100],
+        assessment_method=(
+            request.POST.get('assessment_method', '').strip()
+            or catalog_item['assessment_method']
+        )[:255],
+        notes=request.POST.get('notes', '').strip(),
+        sort_order=last_order + 1,
+        extraction_source='manual',
+    )
+    messages.success(request, f'已新增指标“{item_name}”。')
+    return _metrics_redirect(project_id)
+
+
+@require_POST
+def delete_metrics_item_view(request, project_id, item_id):
+    item = get_object_or_404(MetricsItem, id=item_id, analysis__project__project_id=project_id)
+    item_name = item.item_name
+    item.delete()
+    messages.success(request, f'已删除指标“{item_name}”及其佐证关联记录（课题文件本身未删除）。')
+    return _metrics_redirect(project_id)
+
+
+@require_POST
+def add_metric_evidence_view(request, project_id, item_id):
+    item = get_object_or_404(MetricsItem, id=item_id, analysis__project__project_id=project_id)
+    project = item.analysis.project
+    relative_path = request.POST.get('relative_path', '').strip().replace('\\', '/')
+    target_path = os.path.normpath(_build_abs_path(project.directory_path, relative_path))
+    if not relative_path or not _is_within_root(target_path, project.directory_path) or not os.path.isfile(target_path):
+        return JsonResponse({'success': False, 'message': '请选择课题文件管理中真实存在的文件。'}, status=400)
+    evidence, created = MetricEvidence.objects.get_or_create(
+        metric=item,
+        relative_path=relative_path,
+        defaults={
+            'display_name': os.path.basename(target_path)[:255],
+            'note': request.POST.get('note', '').strip()[:255],
+            'created_by': request.user,
+        },
+    )
+    if not created:
+        evidence.note = request.POST.get('note', evidence.note).strip()[:255]
+        evidence.display_name = os.path.basename(target_path)[:255]
+        evidence.save(update_fields=['note', 'display_name'])
+    return JsonResponse({
+        'success': True,
+        'message': '佐证文件已关联。',
+        'evidence': {
+            'id': evidence.id,
+            'display_name': evidence.display_name,
+            'relative_path': evidence.relative_path,
+        },
+    })
+
+
+@require_POST
+def delete_metric_evidence_view(request, project_id, item_id, evidence_id):
+    evidence = get_object_or_404(
+        MetricEvidence,
+        id=evidence_id,
+        metric_id=item_id,
+        metric__analysis__project__project_id=project_id,
+    )
+    evidence.delete()
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'success': True, 'message': '已取消佐证文件关联；课题文件未删除。'})
+    messages.success(request, '已取消佐证文件关联；课题文件未删除。')
+    return _metrics_redirect(project_id)
 
 
 def import_from_excel_view(request):
+    category_hint = _valid_funding_category(request.POST.get('funding_category') or request.GET.get('funding_category'))
     if request.method == 'POST':
         excel_file = request.FILES.get('excel_file')
         if not excel_file:
             messages.error(request, "请选择要上传的Excel文件。")
-            return redirect('project_list')
+            return redirect('self_funded_project_list' if category_hint == 'self_funded' else 'project_list')
 
         try:
             workbook = openpyxl.load_workbook(excel_file)
@@ -2022,6 +2478,7 @@ def import_from_excel_view(request):
                 '序号': None,  # 跳过序号列
                 '课题编号': 'project_id', '课题名称': 'name', '课题归属': 'ownership',
                 '归口单位': 'managing_unit', '课题级别': 'level', '课题类型': 'project_type',
+                '经费管理类别': 'funding_category',
                 '参与角色': 'role', '开始年份': 'start_year', '课题状态': 'status',
                 '课题联系人': 'contact_person', '课题负责人': 'project_lead', '开始日期': 'start_date',
                 '计划结束日期': 'planned_end_date', '延期时间': 'extension_date', '实际结题时间': 'actual_completion_date',
@@ -2112,6 +2569,14 @@ def import_from_excel_view(request):
                     skipped_count += 1
                     continue
 
+                explicit_category = model_data.get('funding_category')
+                if explicit_category not in {'special', 'self_funded'}:
+                    model_data['funding_category'] = (
+                        'self_funded' if model_data.get('project_type') == '全自筹课题' else category_hint
+                    )
+                elif model_data.get('project_type') == '全自筹课题':
+                    model_data['funding_category'] = 'self_funded'
+
                 existing_project = Project.objects.filter(project_id=project_id).first()
                 is_new_project = existing_project is None
 
@@ -2187,9 +2652,55 @@ def import_from_excel_view(request):
             print(error_msg)  # 输出到终端
             messages.error(request, f"处理文件时出错: {e}")
 
-        return redirect('project_list')
+        return redirect('self_funded_project_list' if category_hint == 'self_funded' else 'project_list')
     
-    return redirect('project_list')
+    return redirect('self_funded_project_list' if category_hint == 'self_funded' else 'project_list')
+
+def query_assistant_view(request):
+    history = []
+    if request.method == 'POST':
+        try:
+            payload = json.loads(request.body or b'{}')
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = {}
+        question = str(payload.get('question') or '').strip()
+        history = payload.get('history') if isinstance(payload.get('history'), list) else []
+        service_name = str(payload.get('service_name') or '').strip()
+        funding_category = str(payload.get('funding_category') or '').strip()
+    else:
+        question = (request.GET.get('q') or '').strip()
+        service_name = (request.GET.get('service_name') or '').strip()
+        funding_category = (request.GET.get('funding_category') or '').strip()
+    result = answer_project_question(
+        question,
+        history=history,
+        service_name=service_name or None,
+        funding_category=funding_category or None,
+    )
+    message_html = render_to_string(
+        'core/partials/query_assistant_message.html',
+        {'result': result},
+        request=request,
+    )
+    return JsonResponse({
+        'ok': result.get('ok', False),
+        'html': message_html,
+        'history_content': result.get('history_content') or result.get('answer') or result.get('error', ''),
+        'source': result.get('source', ''),
+    })
+
+
+def self_funded_project_list_view(request):
+    return project_list_view(request, funding_category='self_funded')
+
+
+def self_funded_progress_monitor_view(request):
+    return progress_monitor_view(request, funding_category='self_funded')
+
+
+def self_funded_expense_monitor_view(request):
+    return expense_monitor_view(request, funding_category='self_funded')
+
 
 def statistics_view(request):
     from django.db.models import Sum, Avg
@@ -2334,7 +2845,7 @@ def statistics_view(request):
         'ongoing_projects': ongoing_projects,
         'completed_projects': completed_projects,
         'metrics_category_data': json.dumps({
-            'labels': [dict(MetricsItem.CATEGORY_CHOICES).get(item['category'], item['category']) for item in metrics_category_distribution],
+            'labels': [MetricsItem.get_category_label_map().get(item['category'], item['category']) for item in metrics_category_distribution],
             'data': [item['count'] for item in metrics_category_distribution],
         }),
         'metrics_status_data': json.dumps({
@@ -2388,50 +2899,66 @@ def api_config_view(request):
     if request.method == 'POST':
         service_name = request.POST.get('service_name')
         api_key = request.POST.get('api_key', '').strip()
+        base_url = request.POST.get('base_url', '').strip()
+        model_name = request.POST.get('model_name', '').strip()
         action = request.POST.get('action')
-        
-        if action == 'save' and service_name and api_key:
+
+        allowed_services = dict(APIConfig.SERVICE_CHOICES)
+        if service_name not in allowed_services:
+            messages.error(request, '请选择有效的AI服务。')
+            return redirect('api_config')
+
+        if action == 'save' and service_name:
             try:
+                defaults = provider_defaults(service_name)
+                if service_name != 'local' and not api_key:
+                    existing = APIConfig.objects.filter(service_name=service_name).first()
+                    if not existing or not existing.get_api_key().strip():
+                        raise ValidationError('该云端服务必须填写API密钥。')
+                base_url = base_url or defaults.get('base_url', '')
+                model_name = model_name or defaults.get('model', '')
+                if not base_url or not model_name:
+                    raise ValidationError('服务地址和模型名称不能为空。')
                 # 创建或更新配置
                 config, created = APIConfig.objects.update_or_create(
                     service_name=service_name,
                     defaults={
+                        'base_url': base_url,
+                        'model_name': model_name,
                         'is_active': True,
                         'test_success': False,
                         'last_test_time': None
                     }
                 )
-                
-                # 设置API密钥（自动加密）
-                config.set_api_key(api_key)
+
+                # 留空表示保留云端已有密钥；本地服务允许不配置密钥。
+                if api_key or service_name == 'local':
+                    config.set_api_key(api_key)
+                config.full_clean()
                 config.save()
                 
                 action_text = '创建' if created else '更新'
                 messages.success(request, f'{config.get_service_name_display()} API配置{action_text}成功！')
                 
+            except ValidationError as e:
+                messages.error(request, f'保存API配置失败: {" ".join(e.messages)}')
             except Exception as e:
                 messages.error(request, f'保存API配置失败: {e}')
         
         elif action == 'test' and service_name:
             try:
                 config = APIConfig.objects.get(service_name=service_name)
-                api_key = config.get_api_key()
-                
-                if not api_key:
-                    messages.error(request, 'API密钥为空，无法测试')
+                test_success, detail = test_api_connection(config)
+
+                # 更新测试结果
+                config.test_success = test_success
+                config.last_test_time = timezone.now()
+                config.save(update_fields=['test_success', 'last_test_time', 'updated_at'])
+
+                if test_success:
+                    messages.success(request, f'{config.get_service_name_display()} 模型连接测试成功！{detail}')
                 else:
-                    # 测试API连接
-                    test_success = test_api_connection(service_name, api_key)
-                    
-                    # 更新测试结果
-                    config.test_success = test_success
-                    config.last_test_time = timezone.now()
-                    config.save()
-                    
-                    if test_success:
-                        messages.success(request, f'{config.get_service_name_display()} API连接测试成功！')
-                    else:
-                        messages.error(request, f'{config.get_service_name_display()} API连接测试失败，请检查密钥是否正确')
+                    messages.error(request, f'{config.get_service_name_display()} 模型连接测试失败：{detail}')
                         
             except APIConfig.DoesNotExist:
                 messages.error(request, '请先保存API配置再进行测试')
@@ -2468,53 +2995,32 @@ def api_config_view(request):
     context = {
         'configs': configs,
         'service_choices': APIConfig.SERVICE_CHOICES,
+        'service_defaults_json': json.dumps({
+            name: provider_defaults(name)
+            for name, _label in APIConfig.SERVICE_CHOICES
+        }, ensure_ascii=False),
     }
     return render(request, 'core/api_config.html', context)
 
-def test_api_connection(service_name, api_key):
-    """测试API连接"""
+def test_api_connection(config):
+    """用一次最小对话测试任意 OpenAI 兼容模型配置。"""
     try:
-        # 验证API密钥格式
-        if not api_key or not api_key.strip() or len(api_key.strip()) < 10:
-            print(f"API密钥格式无效: {service_name}")
-            return False
-            
-        api_key = api_key.strip()
-        
-        if service_name == 'deepseek':
-            url = 'https://api.deepseek.com/v1/chat/completions'
-            headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {api_key}'
-            }
-            payload = {
-                'model': 'deepseek-v4-flash',
-                'messages': [{'role': 'user', 'content': 'Hello'}],
-                'max_tokens': 10
-            }
-        elif service_name == 'kimi':
-            url = 'https://api.moonshot.cn/v1/chat/completions'
-            headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {api_key}'
-            }
-            payload = {
-                'model': 'moonshot-v1-8k',
-                'messages': [{'role': 'user', 'content': 'Hello'}],
-                'max_tokens': 10
-            }
-        else:
-            print(f"不支持的服务类型: {service_name}")
-            return False
-        
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
-        if response.status_code != 200:
-            print(f"API测试失败 - 状态码: {response.status_code}, 响应: {response.text[:200]}")
-        return response.status_code == 200
-        
+        if not config_is_usable(config):
+            return False, '配置不完整，请检查服务地址、模型名称和API密钥。'
+        payload = provider_payload(
+            config,
+            messages=[{'role': 'user', 'content': '只回复：连接成功'}],
+            max_tokens=16,
+            temperature=0,
+            stream=False,
+        )
+        result = post_chat_completion(config, payload, timeout=20)
+        content = str(result['choices'][0]['message'].get('content') or '').strip()
+        if not content:
+            return False, '模型返回了空内容。'
+        return True, f' 当前模型：{get_model_name(config)}。'
     except Exception as e:
-        print(f"API测试异常: {service_name} - {e}")
-        return False
+        return False, str(e)[:300]
 
 def init_system_view(request):
     """系统初始化视图"""
@@ -2706,6 +3212,17 @@ def user_management_view(request):
         'operation_logs': operation_logs,
     })
 
+def _settings_sort_order(raw_value):
+    try:
+        return max(0, min(9999, int(str(raw_value or '0').strip())))
+    except (TypeError, ValueError):
+        raise ValidationError('排序必须填写 0 到 9999 之间的整数。')
+
+
+def _metric_settings_redirect():
+    return redirect(f'{reverse("settings")}#metric-settings')
+
+
 def settings_view(request):
     """系统设置页面"""
     network_config = get_network_config()
@@ -2713,14 +3230,128 @@ def settings_view(request):
     if request.method == 'POST':
         action = request.POST.get('action', 'save_path')
         
-        if action == 'save_backup_schedule':
+        if action == 'create_metric_category':
+            category_name = request.POST.get('category_name', '').strip()
+            if not category_name:
+                messages.error(request, '指标大类名称不能为空。')
+            elif len(category_name) > 100:
+                messages.error(request, '指标大类名称不能超过 100 个字符。')
+            elif MetricsCategory.objects.filter(name=category_name).exists():
+                messages.error(request, '该指标大类已存在。')
+            else:
+                try:
+                    MetricsCategory.objects.create(
+                        code=f'custom_{uuid.uuid4().hex[:12]}',
+                        name=category_name,
+                        sort_order=_settings_sort_order(request.POST.get('sort_order')),
+                        is_active=request.POST.get('is_active') == 'on',
+                    )
+                    messages.success(request, f'已新增指标大类“{category_name}”。')
+                except ValidationError as exc:
+                    messages.error(request, ' '.join(exc.messages))
+            return _metric_settings_redirect()
+        elif action in {'update_metric_category', 'delete_metric_category'}:
+            category = get_object_or_404(MetricsCategory, pk=request.POST.get('category_id'))
+            if action == 'delete_metric_category':
+                if category.indicators.exists():
+                    messages.error(request, '该大类下仍有具体指标，请先删除或转移具体指标。')
+                elif MetricsItem.objects.filter(category=category.code).exists():
+                    messages.error(request, '已有课题使用该大类，不能删除；可以改为停用。')
+                else:
+                    category_name = category.name
+                    category.delete()
+                    messages.success(request, f'已删除指标大类“{category_name}”。')
+                return _metric_settings_redirect()
+
+            category_name = request.POST.get('category_name', '').strip()
+            if not category_name:
+                messages.error(request, '指标大类名称不能为空。')
+            elif len(category_name) > 100:
+                messages.error(request, '指标大类名称不能超过 100 个字符。')
+            elif MetricsCategory.objects.exclude(pk=category.pk).filter(name=category_name).exists():
+                messages.error(request, '该指标大类名称已被使用。')
+            else:
+                try:
+                    category.name = category_name
+                    category.sort_order = _settings_sort_order(request.POST.get('sort_order'))
+                    category.is_active = request.POST.get('is_active') == 'on'
+                    category.save(update_fields=['name', 'sort_order', 'is_active', 'updated_at'])
+                    messages.success(request, f'已更新指标大类“{category_name}”。')
+                except ValidationError as exc:
+                    messages.error(request, ' '.join(exc.messages))
+            return _metric_settings_redirect()
+        elif action == 'create_metric_indicator':
+            category = get_object_or_404(MetricsCategory, pk=request.POST.get('category_id'))
+            indicator_name = request.POST.get('indicator_name', '').strip()
+            if not indicator_name:
+                messages.error(request, '具体指标名称不能为空。')
+            elif len(indicator_name) > 255:
+                messages.error(request, '具体指标名称不能超过 255 个字符。')
+            elif MetricIndicatorDefinition.objects.filter(name=indicator_name).exists():
+                messages.error(request, '该具体指标已存在。')
+            else:
+                try:
+                    MetricIndicatorDefinition.objects.create(
+                        category=category,
+                        name=indicator_name,
+                        unit=request.POST.get('unit', '').strip()[:20],
+                        assessment_method=request.POST.get('assessment_method', '').strip()[:255],
+                        sort_order=_settings_sort_order(request.POST.get('sort_order')),
+                        is_active=request.POST.get('is_active') == 'on',
+                    )
+                    messages.success(request, f'已新增具体指标“{indicator_name}”。')
+                except ValidationError as exc:
+                    messages.error(request, ' '.join(exc.messages))
+            return _metric_settings_redirect()
+        elif action in {'update_metric_indicator', 'delete_metric_indicator'}:
+            indicator = get_object_or_404(MetricIndicatorDefinition, pk=request.POST.get('indicator_id'))
+            if action == 'delete_metric_indicator':
+                if MetricsItem.objects.filter(item_name=indicator.name).exists():
+                    messages.error(request, '已有课题使用该具体指标，不能删除；可以改为停用。')
+                else:
+                    indicator_name = indicator.name
+                    indicator.delete()
+                    messages.success(request, f'已删除具体指标“{indicator_name}”。')
+                return _metric_settings_redirect()
+
+            indicator_name = request.POST.get('indicator_name', '').strip()
+            category = get_object_or_404(MetricsCategory, pk=request.POST.get('category_id'))
+            if not indicator_name:
+                messages.error(request, '具体指标名称不能为空。')
+            elif len(indicator_name) > 255:
+                messages.error(request, '具体指标名称不能超过 255 个字符。')
+            elif MetricIndicatorDefinition.objects.exclude(pk=indicator.pk).filter(name=indicator_name).exists():
+                messages.error(request, '该具体指标名称已被使用。')
+            else:
+                try:
+                    indicator.category = category
+                    indicator.name = indicator_name
+                    indicator.unit = request.POST.get('unit', '').strip()[:20]
+                    indicator.assessment_method = request.POST.get('assessment_method', '').strip()[:255]
+                    indicator.sort_order = _settings_sort_order(request.POST.get('sort_order'))
+                    indicator.is_active = request.POST.get('is_active') == 'on'
+                    indicator.save(update_fields=[
+                        'category', 'name', 'unit', 'assessment_method',
+                        'sort_order', 'is_active', 'updated_at',
+                    ])
+                    messages.success(request, f'已更新具体指标“{indicator_name}”。')
+                except ValidationError as exc:
+                    messages.error(request, ' '.join(exc.messages))
+            return _metric_settings_redirect()
+        elif action == 'save_backup_schedule':
             backup_interval_days = request.POST.get('backup_interval_days', '').strip()
             backup_time = request.POST.get('backup_time', '').strip()
+            backup_enabled = request.POST.get('backup_enabled') == 'on'
             try:
-                updated_schedule = backup_scheduler.update_backup_schedule(backup_interval_days, backup_time)
+                updated_schedule = backup_scheduler.update_backup_schedule(
+                    backup_interval_days,
+                    backup_time,
+                    backup_enabled,
+                )
+                enabled_text = '启用' if backup_enabled else '停用'
                 messages.success(
                     request,
-                    f'自动备份计划已调整为每隔 {int(backup_interval_days)} 天的 {backup_time}。',
+                    f'自动备份已{enabled_text}；计划时间为每隔 {int(backup_interval_days)} 天的 {backup_time}。',
                 )
                 if not updated_schedule.get('available'):
                     messages.warning(request, '时间已保存，但暂时无法重新读取计划任务状态，请稍后刷新确认。')
@@ -2841,8 +3472,8 @@ def settings_view(request):
     # 获取当前配置的项目路径
     current_projects_root = str(settings.PROJECTS_ROOT)
     network_config = get_network_config()  # 重新获取最新配置
-    backup_schedule = backup_scheduler.get_backup_schedule()
     projects = Project.objects.all().order_by('project_id')
+    metric_categories = MetricsCategory.objects.prefetch_related('indicators').all()
     
     context = {
         'current_projects_root': current_projects_root,
@@ -2850,8 +3481,18 @@ def settings_view(request):
         'enable_network_share': network_config.get('enable_network_share', False),
         'enable_web_file_trial': network_config.get('enable_web_file_trial', True),
         'readonly_can_download': network_config.get('readonly_can_download', False),
-        'backup_schedule': backup_schedule,
         'projects': projects,
+        'metric_categories': metric_categories,
     }
     
     return render(request, 'core/settings.html', context)
+
+
+def backup_schedule_status_view(request):
+    """异步读取 Windows 计划任务，避免阻塞系统设置首页。"""
+    backup_schedule = backup_scheduler.get_backup_schedule()
+    return render(
+        request,
+        'core/partials/backup_schedule_settings.html',
+        {'backup_schedule': backup_schedule},
+    )

@@ -6,10 +6,10 @@
     <title>Web文件管理试用 - {{ project.name }}</title>
     {% load static %}
     <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
-    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=3.0">
     <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
     <link rel="stylesheet" href="{% static 'core/css/components.css' %}?v=2.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'core/vendor/fontawesome/css/all.min.css' %}?v=6.0.0">
     <style>
         .trial-shell {
             display: grid;
@@ -30,22 +30,67 @@
         .tree-list,
         .tree-list ul {
             list-style: none;
-            padding-left: 14px;
+            padding-left: 18px;
             margin: 0;
         }
+        #treeContainer > .tree-list {
+            padding-left: 0;
+        }
+        #treeContainer {
+            max-height: calc(100vh - 280px);
+            min-height: 180px;
+            overflow: auto;
+            padding: 4px 2px 8px;
+        }
+        .tree-help {
+            margin: 8px 0 4px;
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.5;
+        }
         .tree-item {
-            margin: 4px 0;
+            margin: 2px 0;
+        }
+        .tree-row {
+            display: flex;
+            align-items: center;
+            min-width: max-content;
+            gap: 2px;
+        }
+        .tree-toggle,
+        .tree-toggle-placeholder {
+            width: 24px;
+            height: 26px;
+            flex: 0 0 24px;
+        }
+        .tree-toggle {
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: #64748b;
+            cursor: pointer;
+            padding: 0;
+        }
+        .tree-toggle:hover {
+            background: #eef2ff;
+            color: #1d4ed8;
         }
         .tree-folder-btn {
             border: none;
             background: transparent;
             color: #1f2937;
             cursor: pointer;
-            padding: 2px 4px;
+            padding: 4px 6px;
             border-radius: 4px;
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            text-align: left;
+            white-space: nowrap;
+        }
+        .tree-folder-btn:hover,
+        .tree-file-btn:hover {
+            background: #f1f5f9;
         }
         .tree-folder-btn.active {
             background: #dbeafe;
@@ -59,6 +104,32 @@
         }
         .tree-folder-meta.is-empty {
             color: #94a3b8;
+        }
+        .tree-file-btn {
+            border: none;
+            background: transparent;
+            color: #334155;
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-align: left;
+            white-space: nowrap;
+        }
+        .tree-file-btn i {
+            color: #64748b;
+        }
+        .tree-file-download {
+            color: #64748b;
+            border-radius: 4px;
+            padding: 4px 6px;
+            opacity: 0;
+        }
+        .tree-row:hover .tree-file-download,
+        .tree-file-download:focus {
+            opacity: 1;
         }
         .toolbar {
             display: flex;
@@ -193,7 +264,8 @@
                             <button id="refreshTreeBtn" class="btn btn-outline-primary btn-sm" type="button">
                                 <i class="fas fa-rotate"></i> 刷新
                             </button>
-                            <div id="treeContainer" style="margin-top: 10px;"></div>
+                            <p class="tree-help">点击箭头逐级展开目录；点击文件夹可查看内容，点击文件可直接预览。</p>
+                            <div id="treeContainer" role="tree" aria-label="课题材料目录树"></div>
                         </section>
 
                         <section class="panel">
@@ -249,6 +321,7 @@
         let treeData = [];
         let currentPath = "";
         let isLoading = false;
+        const expandedPaths = new Set();
 
         const treeContainer = document.getElementById("treeContainer");
         const itemsBody = document.getElementById("itemsBody");
@@ -319,62 +392,200 @@
             return null;
         }
 
+        function prepareTreeNodes(nodes) {
+            return (nodes || []).map((node) => {
+                node.children = Array.isArray(node.children) ? prepareTreeNodes(node.children) : [];
+                if (node.type === "folder") {
+                    node._loaded = node.children.length > 0 || !node.has_children;
+                    node._loading = false;
+                }
+                return node;
+            });
+        }
+
+        function getFolderMeta(node) {
+            const fileCount = Number.isFinite(Number(node.file_count)) ? Number(node.file_count) : null;
+            const folderCount = Number.isFinite(Number(node.folder_count)) ? Number(node.folder_count) : null;
+            if (fileCount === null || folderCount === null) return "";
+            if (fileCount + folderCount === 0) return "（空）";
+            return `（${fileCount} 文件，${folderCount} 文件夹）`;
+        }
+
         function renderTree(nodes) {
             const ul = document.createElement("ul");
             ul.className = "tree-list";
+            ul.setAttribute("role", "group");
 
             for (const node of nodes) {
                 const li = document.createElement("li");
                 li.className = "tree-item";
+                li.setAttribute("role", "treeitem");
+
+                const row = document.createElement("div");
+                row.className = "tree-row";
 
                 if (node.type === "folder") {
+                    const nodePath = normalizePath(node.path);
+                    const hasChildren = Boolean(node.has_children || node.children.length);
+                    const isExpanded = expandedPaths.has(nodePath);
+
+                    if (hasChildren) {
+                        const toggle = document.createElement("button");
+                        toggle.className = "tree-toggle";
+                        toggle.type = "button";
+                        toggle.setAttribute("aria-label", `${isExpanded ? "收起" : "展开"}${node.name}`);
+                        toggle.setAttribute("aria-expanded", String(isExpanded));
+                        toggle.innerHTML = node._loading
+                            ? '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i>'
+                            : `<i class="fas fa-chevron-${isExpanded ? "down" : "right"}" aria-hidden="true"></i>`;
+                        toggle.disabled = Boolean(node._loading);
+                        toggle.addEventListener("click", () => toggleFolderNode(node));
+                        row.appendChild(toggle);
+                    } else {
+                        const placeholder = document.createElement("span");
+                        placeholder.className = "tree-toggle-placeholder";
+                        row.appendChild(placeholder);
+                    }
+
                     const btn = document.createElement("button");
-                    btn.className = "tree-folder-btn" + (normalizePath(currentPath) === normalizePath(node.path) ? " active" : "");
+                    btn.className = "tree-folder-btn" + (normalizePath(currentPath) === nodePath ? " active" : "");
                     btn.type = "button";
+
+                    const folderIcon = document.createElement("i");
+                    folderIcon.className = `fas ${isExpanded ? "fa-folder-open" : "fa-folder"}`;
+                    folderIcon.setAttribute("aria-hidden", "true");
+                    btn.appendChild(folderIcon);
 
                     const folderName = document.createElement("span");
                     folderName.className = "tree-folder-name";
-                    folderName.textContent = `📁 ${node.name}`;
+                    folderName.textContent = node.name;
                     btn.appendChild(folderName);
-
-                    const fileCount = Number.isFinite(Number(node.file_count)) ? Number(node.file_count) : null;
-                    const folderCount = Number.isFinite(Number(node.folder_count)) ? Number(node.folder_count) : null;
-                    const fallbackTotal = Array.isArray(node.children) ? node.children.length : null;
 
                     const meta = document.createElement("span");
                     meta.className = "tree-folder-meta";
-                    if (fileCount !== null && folderCount !== null) {
-                        const totalItems = fileCount + folderCount;
-                        if (totalItems === 0) {
-                            meta.textContent = "（空）";
-                            meta.classList.add("is-empty");
-                        } else {
-                            meta.textContent = `（${fileCount} 文件，${folderCount} 文件夹）`;
-                        }
-                    } else if (fallbackTotal !== null) {
-                        if (fallbackTotal === 0) {
-                            meta.textContent = "（空）";
-                            meta.classList.add("is-empty");
-                        } else {
-                            meta.textContent = `（${fallbackTotal} 项）`;
-                        }
-                    }
+                    meta.textContent = getFolderMeta(node);
+                    if (!node.has_children) meta.classList.add("is-empty");
                     if (meta.textContent) {
                         btn.appendChild(meta);
                     }
 
-                    btn.onclick = () => {
-                        currentPath = node.path || "";
-                        refreshPanel();
-                    };
-                    li.appendChild(btn);
-                    if (node.children && node.children.length) {
+                    btn.addEventListener("click", () => selectFolderNode(node));
+                    row.appendChild(btn);
+                    li.appendChild(row);
+                    if (isExpanded && node._loaded && node.children.length) {
                         li.appendChild(renderTree(node.children));
                     }
+                } else {
+                    const placeholder = document.createElement("span");
+                    placeholder.className = "tree-toggle-placeholder";
+                    row.appendChild(placeholder);
+
+                    const previewLink = document.createElement("a");
+                    previewLink.className = "tree-file-btn";
+                    previewLink.href = buildPreviewLink(node.path);
+                    previewLink.target = "_blank";
+                    previewLink.rel = "noopener";
+                    previewLink.title = `预览 ${node.name}`;
+                    previewLink.innerHTML = '<i class="fas fa-file" aria-hidden="true"></i>';
+                    const fileName = document.createElement("span");
+                    fileName.textContent = node.name;
+                    previewLink.appendChild(fileName);
+                    row.appendChild(previewLink);
+
+                    const downloadLink = document.createElement("a");
+                    downloadLink.className = "tree-file-download";
+                    downloadLink.href = buildDownloadLink(node.path);
+                    downloadLink.title = `下载 ${node.name}`;
+                    downloadLink.setAttribute("aria-label", `下载 ${node.name}`);
+                    downloadLink.innerHTML = '<i class="fas fa-download" aria-hidden="true"></i>';
+                    row.appendChild(downloadLink);
+                    li.appendChild(row);
                 }
                 ul.appendChild(li);
             }
             return ul;
+        }
+
+        function renderTreePanel() {
+            treeContainer.innerHTML = "";
+            const rootBar = document.createElement("div");
+            rootBar.className = "tree-row";
+            rootBar.style.marginBottom = "6px";
+            rootBar.innerHTML = `<span class="tree-toggle-placeholder"></span><button type="button" class="tree-folder-btn ${currentPath === "" ? "active" : ""}"><i class="fas fa-folder-open" aria-hidden="true"></i><span>根目录</span></button>`;
+            rootBar.querySelector("button").addEventListener("click", goRoot);
+            treeContainer.appendChild(rootBar);
+            treeContainer.appendChild(renderTree(treeData));
+        }
+
+        async function loadFolderChildren(node, showLoading = true) {
+            if (!node || node.type !== "folder" || node._loaded) return true;
+            node._loading = true;
+            if (showLoading) renderTreePanel();
+            try {
+                const url = `${endpoints.tree}?path=${encodeURIComponent(node.path || "")}`;
+                const resp = await fetch(url, {
+                    method: "GET",
+                    headers: { "X-Requested-With": "XMLHttpRequest" }
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) {
+                    throw new Error(data.message || `HTTP ${resp.status}`);
+                }
+                node.children = prepareTreeNodes(data.file_tree || []);
+                node._loaded = true;
+                node.has_children = node.children.length > 0;
+                if (data.stats) {
+                    node.file_count = data.stats.file_count;
+                    node.folder_count = data.stats.folder_count;
+                }
+                return true;
+            } catch (error) {
+                showMessage(`目录加载失败：${error.message || error}`, true);
+                return false;
+            } finally {
+                node._loading = false;
+            }
+        }
+
+        async function toggleFolderNode(node) {
+            const nodePath = normalizePath(node.path);
+            if (expandedPaths.has(nodePath)) {
+                expandedPaths.delete(nodePath);
+                renderTreePanel();
+                return;
+            }
+            expandedPaths.add(nodePath);
+            const loaded = await loadFolderChildren(node);
+            if (!loaded) expandedPaths.delete(nodePath);
+            renderTreePanel();
+        }
+
+        async function selectFolderNode(node) {
+            currentPath = node.path || "";
+            if (node.has_children) {
+                expandedPaths.add(normalizePath(node.path));
+                await loadFolderChildren(node);
+            }
+            refreshPanel();
+        }
+
+        async function ensureFolderPath(path, expandFolder = false, showLoading = true) {
+            const segments = normalizePath(path).split("/").filter(Boolean);
+            let nodes = treeData;
+            let node = null;
+            let accumulatedPath = "";
+            for (const segment of segments) {
+                accumulatedPath = accumulatedPath ? `${accumulatedPath}/${segment}` : segment;
+                node = nodes.find((candidate) =>
+                    candidate.type === "folder" && normalizePath(candidate.path) === accumulatedPath
+                );
+                if (!node) return null;
+                if (expandFolder) expandedPaths.add(accumulatedPath);
+                const loaded = await loadFolderChildren(node, showLoading);
+                if (!loaded) return null;
+                nodes = node.children;
+            }
+            return node;
         }
 
         function buildPreviewLink(path) {
@@ -477,12 +688,7 @@
             currentPathText.textContent = shownPath;
             renderBreadcrumb();
 
-            treeContainer.innerHTML = "";
-            const rootBar = document.createElement("div");
-            rootBar.style.marginBottom = "8px";
-            rootBar.innerHTML = `<button type="button" class="tree-folder-btn ${currentPath === "" ? "active" : ""}" onclick="goRoot()">📁 根目录</button>`;
-            treeContainer.appendChild(rootBar);
-            treeContainer.appendChild(renderTree(treeData));
+            renderTreePanel();
 
             const folderNode = currentPath ? findFolderNode(treeData, currentPath) : { children: treeData };
             renderItems(folderNode);
@@ -497,9 +703,12 @@
                     showMessage("加载文件树失败", true);
                     return;
                 }
-                treeData = data.file_tree || [];
-                if (currentPath && !findFolderNode(treeData, currentPath)) {
-                    currentPath = "";
+                const pathToRestore = currentPath;
+                treeData = prepareTreeNodes(data.file_tree || []);
+                expandedPaths.clear();
+                if (pathToRestore) {
+                    const restoredNode = await ensureFolderPath(pathToRestore, true, false);
+                    if (!restoredNode) currentPath = "";
                 }
                 refreshPanel();
             } catch (e) {
@@ -591,21 +800,29 @@
             refreshPanel();
         }
 
-        function enterFolder(path) {
-            currentPath = path || "";
+        async function enterFolder(path) {
+            const targetPath = path || "";
+            if (!targetPath) {
+                goRoot();
+                return;
+            }
+            const node = await ensureFolderPath(targetPath, true);
+            if (!node) {
+                showMessage("无法打开该文件夹，请刷新目录树后重试。", true);
+                return;
+            }
+            currentPath = targetPath;
             refreshPanel();
         }
 
-        function goUp() {
+        async function goUp() {
             const segs = normalizePath(currentPath).split("/").filter(Boolean);
             segs.pop();
-            currentPath = segs.join("/");
-            refreshPanel();
+            await enterFolder(segs.join("/"));
         }
 
-        function jumpToPath(path) {
-            currentPath = path || "";
-            refreshPanel();
+        async function jumpToPath(path) {
+            await enterFolder(path || "");
         }
 
         function deleteByPath(path, name) {

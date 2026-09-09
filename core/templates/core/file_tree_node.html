@@ -3,10 +3,11 @@
     <div class="tree-node">
         {% if node.type == 'folder' %}
             <span class="toggler">
-                {% if node.children %}+{% else %}{% endif %}
+                {% if node.has_children %}+{% endif %}
             </span>
             <span class="folder-icon">📁</span>
             <span class="folder-name"><strong>{{ node.name }}</strong></span>
+            {% if node.has_children %}<span class="lazy-folder-path" data-path="{{ node.path|escape }}" hidden></span>{% endif %}
             <span class="folder-stats">
                 {% if node.file_count > 0 or node.folder_count > 0 %}
                     ({{ node.file_count }} files, {{ node.folder_count }} folders)

@@ -6,11 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>课题统计分析 - 课题管理系统</title>
     <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
-    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=3.0">
     <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
     <link rel="stylesheet" href="{% static 'core/css/components.css' %}?v=2.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="{% static 'core/css/page-title-card.css' %}?v=1.0">
+    <link rel="stylesheet" href="{% static 'core/vendor/fontawesome/css/all.min.css' %}?v=6.0.0">
+    <script src="{% static 'core/vendor/chartjs/chart.umd.min.js' %}?v=4.5.1"></script>
     <style>
         /* 产出指标相关样式 */
         .metrics-completion-table {
@@ -548,10 +549,28 @@
         <main class="app-main">
             <div class="app-content">
                 <!-- 页面头部 -->
-                <div class="page-header">
+                <div class="page-header standalone-title-card">
                     <div class="container">
+                        <div class="page-header-content">
+                            <div>
+                                <h1 class="page-title">
+                                    <i class="fas fa-chart-pie"></i>
+                                    课题统计分析
+                                </h1>
+                                <p class="page-subtitle">从课题结构、经费和产出指标等维度查看整体情况</p>
+                            </div>
+                            <div class="page-actions">
+                                <a href="{% url 'project_list' %}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i>
+                                    返回课题列表
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-
+                <div class="page-body">
+                    <div class="container">
             <!-- Filter Section -->
             <div class="content-section">
                 <div class="section-header">

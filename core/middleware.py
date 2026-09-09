@@ -15,6 +15,7 @@ class AccessControlMiddleware:
         'project_list',
         'project_detail',
         'statistics',
+        'query_assistant',
         'progress_monitor',
         'expense_monitor',
         'get_file_tree',
@@ -51,6 +52,9 @@ class AccessControlMiddleware:
 
         view_name = match.url_name if match else ''
         if view_name in self.account_views:
+            return None
+        if view_name == 'query_assistant' and request.method == 'POST':
+            # 助手 POST 仅执行白名单只读工具；使用 POST 避免问题和对话历史进入 URL 日志。
             return None
         if view_name in self.readonly_get_views and request.method in {'GET', 'HEAD', 'OPTIONS'}:
             return None

@@ -9,6 +9,31 @@ from pathlib import Path
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 NUM_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
 
+PDF_LABELS = (
+    "所属单位自筹经费",
+    "所属单位自筹资金",
+    "课题牵头承担单位",
+    "外部专项经费",
+    "院专项经费",
+    "课题承担单位",
+    "课题组织单位",
+    "课题起止年限",
+    "计划结束日期",
+    "主要研究内容",
+    "课题负责人",
+    "课题联系人",
+    "课题编号",
+    "课题名称",
+    "起始时间",
+    "开始时间",
+    "终止时间",
+    "结束时间",
+    "专项经费",
+    "自筹经费",
+    "立项经费",
+    "总预算",
+)
+
 
 def _get_text(el):
     parts = []
@@ -36,6 +61,145 @@ def _read_tables(docx_path):
         if rows:
             tables.append(rows)
     return tables
+
+
+def _pdf_label_pattern(label):
+    """匹配 PDF 文本层中可能被插入空格或换行的中文标签。"""
+    return r"\s*".join(re.escape(character) for character in label)
+
+
+def _extract_pdf_label_values(text):
+    alternatives = []
+    labels_by_group = {}
+    for index, label in enumerate(sorted(PDF_LABELS, key=len, reverse=True)):
+        group_name = f"label_{index}"
+        alternatives.append(f"(?P<{group_name}>{_pdf_label_pattern(label)})")
+        labels_by_group[group_name] = label
+
+    label_re = re.compile("|".join(alternatives))
+    matches = list(label_re.finditer(text))
+    values = {}
+    for index, match in enumerate(matches):
+        label = labels_by_group[match.lastgroup]
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        value = text[match.end():end]
+        value = re.sub(r"\[\[任务书第\d+页\]\]", " ", value)
+        value = re.sub(r"\s+", " ", value).strip(" ：:|;；,，-—")
+        if not value:
+            continue
+        values.setdefault(label, []).append(value)
+    return values
+
+
+def _pick_pdf_value(values, *labels, max_length=500):
+    candidates = []
+    for label in labels:
+        candidates.extend(values.get(label, []))
+    if not candidates:
+        return ""
+
+    def candidate_score(value):
+        score = 0
+        if len(value) <= max_length:
+            score += 4
+        if "填表说明" not in value and "填写说明" not in value:
+            score += 2
+        if not re.fullmatch(r"[\d.]+", value):
+            score += 1
+        return score
+
+    selected = max(enumerate(candidates), key=lambda item: (candidate_score(item[1]), -item[0]))[1]
+    return selected[:max_length].strip()
+
+
+def extract_task_pdf_text(text, source_file=""):
+    """把带文本层的任务书 PDF 转成与 DOCX 提取器一致的核心结构。"""
+    normalized_text = str(text or "").replace("\u00a0", " ").replace("\u3000", " ")
+    if len(re.sub(r"\s+", "", normalized_text)) < 20:
+        raise ValueError("PDF 中未检测到可识别文字；若为扫描件，请先进行 OCR 后再上传。")
+
+    values = _extract_pdf_label_values(normalized_text)
+    basic_info = {}
+    basic_mapping = {
+        "课题编号": ("课题编号",),
+        "课题名称": ("课题名称",),
+        "课题承担单位": ("课题承担单位", "课题牵头承担单位"),
+        "课题组织单位": ("课题组织单位",),
+        "课题负责人": ("课题负责人",),
+        "课题联系人": ("课题联系人",),
+        "课题起止年限": ("课题起止年限",),
+    }
+    for target_label, source_labels in basic_mapping.items():
+        value = _pick_pdf_value(values, *source_labels)
+        if value:
+            basic_info[target_label] = value
+
+    topic_fields = {}
+    field_mapping = {
+        "起始时间": ("起始时间", "开始时间"),
+        "终止时间": ("终止时间", "结束时间", "计划结束日期"),
+        "课题组织单位": ("课题组织单位",),
+    }
+    for target_label, source_labels in field_mapping.items():
+        value = _pick_pdf_value(values, *source_labels)
+        if value:
+            topic_fields[target_label] = value
+
+    research_content = _pick_pdf_value(values, "主要研究内容", max_length=10000)
+    if research_content:
+        topic_fields["主要研究内容"] = research_content
+
+    funding_parts = []
+    budget_row = {"预算科目名称": "经费来源（合计）"}
+    funding_mapping = (
+        ("专项经费", ("外部专项经费", "专项经费"), "专项"),
+        ("院专项经费", ("院专项经费",), "院专项"),
+        ("自筹经费", ("所属单位自筹经费", "所属单位自筹资金", "自筹经费"), "自筹"),
+        ("合计", ("总预算",), "合计"),
+    )
+    for target_label, source_labels, display_label in funding_mapping:
+        value = _pick_pdf_value(values, *source_labels, max_length=80)
+        number_match = re.search(r"-?\d+(?:\.\d+)?", value)
+        if number_match:
+            number = _coerce_value(number_match.group(0))
+            budget_row[target_label] = number
+            funding_parts.append(f"{display_label}：{number}")
+    if funding_parts:
+        basic_info["立项经费"] = "；".join(funding_parts)
+
+    return {
+        "source_file": str(source_file),
+        "basic_info": basic_info,
+        "topic_info": {"fields": topic_fields},
+        "assessment_metrics": {},
+        "schedule": {},
+        "budget_summary": {"rows": [budget_row]} if len(budget_row) > 1 else {},
+        "equipment_budget_detail": {},
+        "material_budget_detail": {},
+        "test_processing_detail": {},
+        "unit_budget_detail": {},
+        "personnel": {},
+        "signatures": {},
+    }
+
+
+def extract_task_pdf(pdf_path):
+    """提取 PDF 文本层；扫描图片型 PDF 需要先由用户执行 OCR。"""
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(pdf_path))
+    if reader.is_encrypted and not reader.decrypt(""):
+        raise ValueError("PDF 已加密，请解除密码保护后再上传。")
+
+    pages = []
+    for page_number, page in enumerate(reader.pages, start=1):
+        try:
+            page_text = page.extract_text(extraction_mode="layout") or ""
+        except (TypeError, NotImplementedError):
+            page_text = page.extract_text() or ""
+        if page_text.strip():
+            pages.append(f"[[任务书第{page_number}页]]\n{page_text}")
+    return extract_task_pdf_text("\n\n".join(pages), source_file=pdf_path)
 
 
 def _normalize_label(label):

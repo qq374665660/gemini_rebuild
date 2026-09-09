@@ -63,6 +63,8 @@
   --shadow-glow-accent: 0 0 20px rgba(14, 165, 233, 0.4);
   --shadow-medium: var(--shadow-lg);
   --shadow-strong: var(--shadow-2xl);
+  --shadow-soft: var(--shadow-md);
+  --shadow-colored: 0 10px 24px rgba(37, 99, 235, 0.22);
   
   /* 现代化边框半径 */
   --radius-xs: 4px;
@@ -74,6 +76,7 @@
   --radius-3xl: 32px;
   --radius-full: 9999px;
   --radius-button: 14px;
+  --radius-modern: var(--radius-lg);
   
   /* 精确间距系统 */
   --space-1: 4px;
@@ -88,6 +91,12 @@
   --space-16: 64px;
   --space-20: 80px;
   --space-24: 96px;
+  --space-card: var(--space-6);
+  --space-modern: var(--space-5);
+  --space-section: var(--space-10);
+
+  /* 兼容详情页后续组件所使用的语义变量。 */
+  --card-bg: rgba(255, 255, 255, 0.95);
   
   /* 动画系统 */
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -1636,13 +1645,17 @@
   align-items: center;
   gap: 12px;
   margin-bottom: var(--space-modern);
+  padding: 14px 16px;
+  border: 1px solid rgba(22, 163, 74, 0.18);
+  border-radius: var(--radius-md);
+  background: rgba(240, 253, 244, 0.78);
   font-size: 20px;
   font-weight: 600;
   color: #1e293b;
-  background: var(--gradient-success);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+}
+
+.analysis-results-section h4 i {
+  color: #16a34a;
 }
 
 .analysis-result-content {
@@ -1655,6 +1668,10 @@
   line-height: 1.7;
   color: #334155;
   box-shadow: var(--shadow-soft);
+}
+
+.analysis-delete-button {
+  margin-left: auto;
 }
 
 /* 15. 按钮现代化样式 */

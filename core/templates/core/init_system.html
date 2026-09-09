@@ -6,9 +6,9 @@
     <title>系统初始化 - 科研课题管理系统</title>
     {% load static %}
     <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
-    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=3.0">
     <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'core/vendor/fontawesome/css/all.min.css' %}?v=6.0.0">
 </head>
 <body>
     <div class="app-layout">
@@ -42,6 +42,7 @@
                 <!-- 页面内容 -->
                 <div class="page-body">
                     <div class="container">
+                        {% include 'core/partials/system_config_nav.html' %}
                         <!-- 初始化结果统计 -->
                         <div class="stats-grid">
                             <div class="stat-card">

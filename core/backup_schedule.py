@@ -101,7 +101,7 @@ $startAt = [DateTimeOffset]::Parse([string]$trigger.StartBoundary).ToLocalTime()
 [pscustomobject]@{{
     task_name = $task.TaskName
     state = [string]$task.State
-    enabled = [bool]$trigger.Enabled
+    enabled = [bool]$task.Settings.Enabled
     start_boundary = [string]$trigger.StartBoundary
     time = $startAt.ToString('HH:mm')
     trigger_type = $triggerType
@@ -185,8 +185,8 @@ def get_backup_schedule():
         }
 
 
-def update_backup_schedule(interval_days, time_value):
-    """Replace only the trigger with a daily interval, preserving the task action and settings."""
+def update_backup_schedule(interval_days, time_value, enabled=True):
+    """Update the daily trigger and whether the existing backup task is enabled."""
     if bool(getattr(settings, "BACKUP_SCHEDULE_READ_ONLY", False)):
         raise BackupScheduleError("开发环境为只读模式，不能修改正式自动备份时间。")
     try:
@@ -199,6 +199,7 @@ def update_backup_schedule(interval_days, time_value):
         )
     if not TIME_PATTERN.fullmatch(time_value or ""):
         raise BackupScheduleError("请输入有效的备份时间，格式为 HH:MM。")
+    enabled = str(enabled).strip().lower() in {"1", "true", "yes", "on"}
 
     task_name, task_path = _task_parts()
     hour, minute = (int(part) for part in time_value.split(":"))
@@ -211,6 +212,11 @@ if (-not $task) {{ throw '未找到自动备份计划任务。' }}
 $at = [DateTime]::Today.AddHours({hour}).AddMinutes({minute})
 $trigger = New-ScheduledTaskTrigger -Daily -DaysInterval {interval_days} -At $at
 Set-ScheduledTask -TaskName {_powershell_literal(task_name)} -TaskPath {_powershell_literal(task_path)} -Trigger $trigger | Out-Null
+if ({'$true' if enabled else '$false'}) {{
+    Enable-ScheduledTask -TaskName {_powershell_literal(task_name)} -TaskPath {_powershell_literal(task_path)} | Out-Null
+}} else {{
+    Disable-ScheduledTask -TaskName {_powershell_literal(task_name)} -TaskPath {_powershell_literal(task_path)} | Out-Null
+}}
 """
     _run_powershell(script)
     return get_backup_schedule()

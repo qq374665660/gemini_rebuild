@@ -3,13 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>科研课题管理系统</title>
+    <title>{{ funding_category_label }}管理 - 科研课题管理系统</title>
     {% load static %}
     <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
-    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=3.0">
     <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'core/css/page-title-card.css' %}?v=1.0">
+    <link rel="stylesheet" href="{% static 'core/vendor/fontawesome/css/all.min.css' %}?v=6.0.0">
     <style>
+        .project-list-page-header {
+            margin: 28px 0 30px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            overflow: visible;
+        }
+
+        .project-list-page-header::after {
+            display: none;
+        }
+
+        .project-list-page-header .page-header-content {
+            position: relative;
+            min-height: 132px;
+            padding: 28px 30px;
+            border: 1px solid var(--border-light);
+            border-radius: 20px;
+            background: linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%);
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
+        }
+
+        .project-list-page-header .page-header-content::after {
+            content: '';
+            position: absolute;
+            right: -70px;
+            top: -110px;
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            background: rgba(37, 99, 235, 0.07);
+            pointer-events: none;
+        }
+
+        .project-list-page-header .page-title {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: clamp(28px, 2vw, 32px);
+        }
+
+        .project-list-page-header .page-title i {
+            display: grid;
+            place-items: center;
+            flex: 0 0 46px;
+            width: 46px;
+            height: 46px;
+            border-radius: 14px;
+            color: #fff;
+            background: var(--primary-color);
+            box-shadow: var(--shadow-primary);
+            font-size: 21px;
+        }
+
+        .project-list-page-header .page-subtitle {
+            position: relative;
+            z-index: 1;
+            margin: 9px 0 0 58px;
+            font-size: 16px;
+        }
+
+        .project-list-page-header .page-actions {
+            position: relative;
+            z-index: 1;
+        }
+
         .project-table .col-level,
         .project-table .col-status,
         .project-table .col-budget {
@@ -22,6 +92,72 @@
             display: inline-flex;
             align-items: center;
             white-space: nowrap;
+        }
+
+        .project-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: var(--bg-primary);
+        }
+
+        .project-table th:last-child,
+        .project-table td:last-child {
+            position: sticky;
+            right: 0;
+            min-width: 132px;
+            background: var(--bg-primary);
+            box-shadow: -8px 0 12px -12px rgba(15, 23, 42, 0.45);
+        }
+
+        .project-table th:last-child { z-index: 3; }
+        .project-table tbody tr:hover td:last-child { background: var(--primary-lighter); }
+
+        .sort-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: inherit;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .sort-link:hover,
+        .sort-link:focus-visible { color: var(--primary-color); }
+
+        .filter-summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px var(--spacing-lg);
+            border-top: 1px solid var(--border-light);
+            background: var(--primary-lighter);
+            color: var(--primary-dark);
+            font-size: var(--font-size-sm);
+        }
+
+        .filter-summary a { white-space: nowrap; }
+
+        .card-budget-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: var(--spacing-sm);
+        }
+
+        .card-budget-item {
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-size: var(--font-size-sm);
+        }
+
+        .card-budget-item strong {
+            display: block;
+            color: var(--text-primary);
+            margin-top: 2px;
         }
 
         .filter-panel {
@@ -268,15 +404,15 @@
         <main class="app-main">
             <div class="app-content">
                 <!-- 页面头部 -->
-                <div class="page-header">
+                <div class="page-header project-list-page-header standalone-title-card">
                     <div class="container">
                         <div class="page-header-content">
                             <div>
                                 <h1 class="page-title">
                                     <i class="fas fa-project-diagram"></i>
-                                    课题管理
+                                    {{ funding_category_label }}管理
                                 </h1>
-                                <p class="page-subtitle">管理和跟踪科研课题的全生命周期</p>
+                                <p class="page-subtitle">管理和跟踪{{ funding_category_label }}的全生命周期</p>
                             </div>
                             {% if is_system_admin %}<div class="page-actions">
                                 <button class="btn btn-secondary" id="export-btn">
@@ -287,13 +423,18 @@
                                     <i class="fas fa-file-excel"></i>
                                     从Excel导入
                                 </button>
-                                <a href="{% url 'create_project' %}" class="btn btn-primary">
+                                <a href="{% url 'create_project' %}?funding_category={{ funding_category }}" class="btn btn-primary">
                                     <i class="fas fa-plus"></i>
                                     新建课题
                                 </a>
                             </div>{% endif %}
                         </div>
                     </div>
+                </div>
+
+                <div class="container" style="margin-top:-18px;margin-bottom:18px;display:flex;gap:8px;">
+                    <a href="{% url 'project_list' %}" class="btn {% if not is_self_funded %}btn-primary{% else %}btn-secondary{% endif %}">专项经费课题</a>
+                    <a href="{% url 'self_funded_project_list' %}" class="btn {% if is_self_funded %}btn-primary{% else %}btn-secondary{% endif %}">企业全自筹课题</a>
                 </div>
                 
                 <!-- 页面内容 -->
@@ -349,12 +490,18 @@
                                     筛选和搜索
                                 </h3>
                                 <div class="content-section-actions">
-                                    <button class="btn btn-text" id="toggle-filters" type="button" aria-expanded="false">
+                                    <button class="btn btn-text" id="toggle-filters" type="button" aria-expanded="false" aria-controls="filter-section">
                                         <i class="fas fa-chevron-down"></i>
                                         展开
                                     </button>
                                 </div>
                             </div>
+                            {% if filters_applied %}
+                                <div class="filter-summary" role="status">
+                                    <span><i class="fas fa-filter" aria-hidden="true"></i> 已应用 {{ active_filter_count }} 类条件，当前显示 {{ projects|length }} 项</span>
+                                    <a href="{{ scope_url }}" class="btn btn-text btn-sm">清除全部</a>
+                                </div>
+                            {% endif %}
                             <div class="content-section-body" id="filter-section" style="display: none;">
                                 <div class="filter-panel">
                                     <div class="filter-panel-head">
@@ -387,6 +534,7 @@
                                         </div>
                                     {% endif %}
                                     <form method="get" action="" class="filter-form">
+                                        <input type="hidden" name="sort" value="{{ sort }}">
                                         <div class="filter-section">
                                             <div class="filter-section-title">
                                                 <i class="fas fa-sliders"></i>
@@ -557,14 +705,8 @@
                                 <h3 class="content-section-title">
                                     <i class="fas fa-list"></i>
                                     课题列表
-                                    <span class="badge badge-primary">{{ projects|length }}</span>
+                                    <span class="badge badge-primary">{{ total_projects }}</span>
                                 </h3>
-                                <div class="content-section-actions">
-                                    <button class="btn btn-text" id="view-toggle" data-view="table">
-                                        <i class="fas fa-th-large"></i>
-                                        卡片视图
-                                    </button>
-                                </div>
                             </div>
                             <div class="content-section-body">
                                 {% if projects %}
@@ -573,21 +715,21 @@
                                         <table class="table project-table">
                                             <thead>
                                                 <tr>
-                                                    <th>序号</th>
-                                                    <th>课题名称</th>
-                                                    <th>负责人</th>
-                                                    <th class="col-level">级别</th>
-                                                    <th>年份</th>
-                                                    <th class="col-status">状态</th>
-                                                    <th class="col-budget">总预算</th>
-                                                    <th class="col-budget">专项预算</th>
-                                                    <th>操作</th>
+                                                    <th scope="col">序号</th>
+                                                    <th scope="col"><a class="sort-link" href="{{ sort_links.name.url }}" title="{{ sort_links.name.label }}">课题名称 <i class="{{ sort_links.name.icon }}" aria-hidden="true"></i></a></th>
+                                                    <th scope="col">负责人</th>
+                                                    <th scope="col" class="col-level">级别</th>
+                                                    <th scope="col"><a class="sort-link" href="{{ sort_links.start_year.url }}" title="{{ sort_links.start_year.label }}">年份 <i class="{{ sort_links.start_year.icon }}" aria-hidden="true"></i></a></th>
+                                                    <th scope="col" class="col-status"><a class="sort-link" href="{{ sort_links.status.url }}" title="{{ sort_links.status.label }}">状态 <i class="{{ sort_links.status.icon }}" aria-hidden="true"></i></a></th>
+                                                    <th scope="col" class="col-budget"><a class="sort-link" href="{{ sort_links.external_funding.url }}" title="{{ sort_links.external_funding.label }}">外部专项 <i class="{{ sort_links.external_funding.icon }}" aria-hidden="true"></i></a></th>
+                                                    <th scope="col" class="col-budget">院专项</th>
+                                                    <th scope="col">操作</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {% for project in projects %}
                                                 <tr>
-                                                    <td>{{ forloop.counter }}</td>
+                                                    <td>{{ page_obj.start_index|add:forloop.counter0 }}</td>
                                                     <td>
                                                         <div>
                                                             <strong>{{ project.name }}</strong>
@@ -607,37 +749,26 @@
                                                         {% endif %}
                                                     </td>
                                                     <td class="col-budget">
-                                                        {% if project.total_budget %}
-                                                            <strong>{{ project.total_budget|floatformat:1 }}万</strong>
+                                                        {% if project.external_funding is not None %}
+                                                            <strong>{{ project.external_funding|floatformat:1 }}</strong>
                                                         {% else %}
                                                             <span class="text-muted">-</span>
                                                         {% endif %}
                                                     </td>
                                                     <td class="col-budget">
-                                                        <div>
-                                                            <span class="text-muted">外部：</span>
-                                                            {% if project.external_funding is not None %}
-                                                                <strong>{{ project.external_funding|floatformat:1 }}万</strong>
-                                                            {% else %}
-                                                                <span class="text-muted">-</span>
-                                                            {% endif %}
-                                                        </div>
-                                                        <div>
-                                                            <span class="text-muted">院：</span>
-                                                            {% if project.institute_funding is not None %}
-                                                                <strong>{{ project.institute_funding|floatformat:1 }}万</strong>
-                                                            {% else %}
-                                                                <span class="text-muted">-</span>
-                                                            {% endif %}
-                                                        </div>
+                                                        {% if project.institute_funding is not None %}
+                                                            <strong>{{ project.institute_funding|floatformat:1 }}</strong>
+                                                        {% else %}
+                                                            <span class="text-muted">-</span>
+                                                        {% endif %}
                                                     </td>
                                                     <td>
                                                         <div class="d-flex gap-xs">
                                                             <a href="{% url 'project_detail' project.project_id %}" class="btn btn-sm btn-primary" title="查看详情">
-                                                                <i class="fas fa-eye"></i>
+                                                                <i class="fas fa-eye"></i> 查看
                                                             </a>
                                                             {% if is_system_admin %}
-                                                                <button class="btn btn-sm btn-danger" onclick="confirmDelete('{{ project.project_id }}', '{{ project.name }}')" title="删除课题">
+                                                                <button class="btn btn-sm btn-danger" onclick="confirmDelete('{{ project.project_id|escapejs }}', '{{ project.name|escapejs }}')" title="删除课题">
                                                                     <i class="fas fa-trash"></i>
                                                                 </button>
                                                             {% endif %}
@@ -648,58 +779,17 @@
                                             </tbody>
                                         </table>
                                     </div>
-                                    
-                                    <!-- 卡片视图 -->
-                                    <div id="card-view" class="card-grid" style="display: none;">
-                                        {% for project in projects %}
-                                        <div class="card animate-fade-in">
-                                            <div class="card-header">
-                                                <div class="d-flex justify-content-between align-items-start">
-                                                    <div>
-                                                        {% if project.status == '在研' or project.status == '进行中' or project.status == '执行中' %}
-                                                            <span class="badge badge-primary">{{ project.status }}</span>
-                                                        {% elif project.status == '结题' or project.status == '完成' or project.status == '已完成' %}
-                                                            <span class="badge badge-success">{{ project.status }}</span>
-                                                        {% else %}
-                                                            <span class="badge badge-warning">{{ project.status }}</span>
-                                                        {% endif %}
-                                                        <span class="badge badge-secondary ml-1">{{ project.level }}</span>
-                                                    </div>
-                                                    <span class="text-muted">{{ project.start_year }}</span>
-                                                </div>
-                                            </div>
-                                            <div class="card-body">
-                                                <h4 style="margin: 0 0 var(--spacing-sm) 0; font-size: var(--font-size-lg); line-height: 1.4;">
-                                                    {{ project.name }}
-                                                </h4>
-                                                <div class="text-muted mb-2" style="font-size: var(--font-size-sm);">
-                                                    <i class="fas fa-building"></i> {{ project.ownership }} · {{ project.managing_unit }}
-                                                </div>
-                                                <div class="text-muted mb-3" style="font-size: var(--font-size-sm);">
-                                                    <i class="fas fa-user"></i> {{ project.project_lead }}
-                                                </div>
-                                                {% if project.total_budget %}
-                                                <div class="text-primary" style="font-weight: var(--font-weight-semibold);">
-                                                    <i class="fas fa-dollar-sign"></i> 总预算：{{ project.total_budget|floatformat:1 }}万元
-                                                </div>
-                                                {% endif %}
-                                            </div>
-                                            <div class="card-footer">
-                                                <div class="d-flex justify-content-between align-items-center">
-                                                    <small class="text-muted">课题编号：{{ project.project_id }}</small>
-                                                    <div class="d-flex gap-xs">
-                                                        <a href="{% url 'project_detail' project.project_id %}" class="btn btn-sm btn-primary">
-                                                            <i class="fas fa-eye"></i> 查看
-                                                        </a>
-                                                        <button class="btn btn-sm btn-danger" onclick="confirmDelete('{{ project.project_id }}', '{{ project.name }}')">
-                                                            <i class="fas fa-trash"></i>
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {% endfor %}
-                                    </div>
+                                    {% if page_obj.has_other_pages %}
+                                        <nav class="pagination" aria-label="课题列表分页">
+                                            {% if page_obj.has_previous %}
+                                                <a class="pagination-link" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">上一页</a>
+                                            {% endif %}
+                                            <span>第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页，共 {{ page_obj.paginator.count }} 项</span>
+                                            {% if page_obj.has_next %}
+                                                <a class="pagination-link" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">下一页</a>
+                                            {% endif %}
+                                        </nav>
+                                    {% endif %}
                                 {% else %}
                                     <div class="empty-state">
                                         <div class="empty-state-icon">
@@ -735,6 +825,7 @@
         <!-- 隐藏的文件上传表单 -->
         <form method="post" action="{% url 'import_from_excel' %}" enctype="multipart/form-data" id="excel-form" style="display: none;">
             {% csrf_token %}
+            <input type="hidden" name="funding_category" value="{{ funding_category }}">
             <input type="file" name="excel_file" required accept=".xlsx, .xls" id="excel_upload">
         </form>
     {% endif %}
@@ -743,7 +834,7 @@
         const exportButton = document.getElementById('export-btn');
         if (exportButton) {
             exportButton.addEventListener('click', function() {
-                const exportUrl = "{% url 'export_project_list' %}";
+                const exportUrl = "{% url 'export_project_list' %}?funding_category={{ funding_category }}";
                 const query = window.location.search;
                 window.location.href = query ? `${exportUrl}${query}` : exportUrl;
             });
@@ -760,25 +851,6 @@
             }
         });
         {% endif %}
-        
-        // 视图切换功能
-        document.getElementById('view-toggle').addEventListener('click', function() {
-            const tableView = document.getElementById('table-view');
-            const cardView = document.getElementById('card-view');
-            const currentView = this.dataset.view;
-            
-            if (currentView === 'table') {
-                tableView.style.display = 'none';
-                cardView.style.display = 'grid';
-                this.dataset.view = 'card';
-                this.innerHTML = '<i class="fas fa-table"></i> 表格视图';
-            } else {
-                tableView.style.display = 'block';
-                cardView.style.display = 'none';
-                this.dataset.view = 'table';
-                this.innerHTML = '<i class="fas fa-th-large"></i> 卡片视图';
-            }
-        });
         
         // 筛选区域折叠功能
         document.getElementById('toggle-filters').addEventListener('click', function() {

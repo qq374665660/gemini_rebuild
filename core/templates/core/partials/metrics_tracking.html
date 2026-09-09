@@ -1,0 +1,127 @@
+{% if metrics_items_by_category %}
+    <div class="metrics-summary-grid" aria-label="指标完成概览">
+        <div class="metric-summary-card"><span>指标总数</span><strong>{{ metrics_summary.total }}</strong></div>
+        <div class="metric-summary-card is-success"><span>已完成</span><strong>{{ metrics_summary.completed }}</strong></div>
+        <div class="metric-summary-card is-progress"><span>平均进度</span><strong>{{ metrics_summary.average_progress }}%</strong></div>
+        <div class="metric-summary-card"><span>佐证文件</span><strong>{{ metrics_summary.evidence_count }}</strong></div>
+    </div>
+
+    {% for category, items in metrics_items_by_category.items %}
+        <section class="metrics-category tracking-category">
+            <div class="tracking-category-head">
+                <h5 class="category-title"><i class="fas fa-tag"></i>{{ category }}</h5>
+                <span>{{ items|length }} 项</span>
+            </div>
+            <div class="metric-tracking-list">
+                {% for item in items %}
+                    <article class="metric-tracking-card">
+                        <div class="metric-tracking-head">
+                            <div>
+                                <div class="metric-source-line">
+                                    <span class="metric-order">{{ forloop.counter|stringformat:"02d" }}</span>
+                                    {% if item.source_section %}<span>{{ item.source_section }}</span>{% endif %}
+                                    {% if item.source_page %}<span>任务书第 {{ item.source_page }} 页</span>{% endif %}
+                                    <span>{{ item.get_extraction_source_display }}</span>
+                                </div>
+                                <h6>{{ item.item_name }}</h6>
+                            </div>
+                            <span class="metric-status status-{{ item.status }}">
+                                {{ item.get_status_display }}
+                            </span>
+                        </div>
+
+                        <div class="metric-data-grid">
+                            <div><span>任务书目标</span><strong>{{ item.target_value|default:"-" }}</strong></div>
+                            <div><span>当前完成值</span><strong>{{ item.current_value|default:"-" }}</strong></div>
+                            <div><span>交付/佐证形式</span><strong>{{ item.assessment_method|default:"-" }}</strong></div>
+                        </div>
+
+                        <div class="metric-progress-row">
+                            <div class="metric-progress-label"><span>完成进度</span><strong>{{ item.progress_percent }}%</strong></div>
+                            <div class="metric-progress-track" role="progressbar" aria-valuenow="{{ item.progress_percent }}" aria-valuemin="0" aria-valuemax="100">
+                                <span style="width: {{ item.progress_percent }}%"></span>
+                            </div>
+                        </div>
+
+                        {% if item.notes %}<div class="metric-note"><i class="fas fa-note-sticky"></i>{{ item.notes }}</div>{% endif %}
+
+                        <div class="metric-evidence-block">
+                            <div class="metric-evidence-head">
+                                <strong><i class="fas fa-paperclip"></i> 佐证材料（{{ item.evidence_files.all|length }}）</strong>
+                                {% if is_system_admin %}
+                                    <button type="button" class="btn btn-sm btn-outline-primary metric-evidence-button"
+                                            data-metric-id="{{ item.id }}"
+                                            data-metric-name="{{ item.item_name }}"
+                                            data-evidence-url="{% url 'add_metric_evidence' project.project_id item.id %}">
+                                        <i class="fas fa-link"></i> 从文件管理关联
+                                    </button>
+                                {% endif %}
+                            </div>
+                            {% if item.evidence_files.all %}
+                                <div class="metric-evidence-list">
+                                    {% for evidence in item.evidence_files.all %}
+                                        <div class="metric-evidence-item{% if not evidence.is_available %} is-missing{% endif %}">
+                                            <div>
+                                                <i class="fas fa-file-circle-check"></i>
+                                                {% if evidence.is_available %}
+                                                    <a href="{% url 'file_action' project.project_id 'preview' %}?path={{ evidence.relative_path|urlencode }}" target="_blank" rel="noopener">{{ evidence.display_name }}</a>
+                                                {% else %}
+                                                    <span>{{ evidence.display_name }}（文件已移动或不存在）</span>
+                                                {% endif %}
+                                                {% if evidence.note %}<small>{{ evidence.note }}</small>{% endif %}
+                                            </div>
+                                            <div class="metric-evidence-actions">
+                                                {% if evidence.is_available and can_download_files %}
+                                                    <a class="btn btn-sm btn-text" href="{% url 'file_action' project.project_id 'download' %}?path={{ evidence.relative_path|urlencode }}" title="下载"><i class="fas fa-download"></i></a>
+                                                {% endif %}
+                                                {% if is_system_admin %}
+                                                    <form method="post" action="{% url 'delete_metric_evidence' project.project_id item.id evidence.id %}" onsubmit="return confirm('仅取消指标关联，不删除课题文件。确定继续？');">
+                                                        {% csrf_token %}<button class="btn btn-sm btn-text text-danger" type="submit" title="取消关联"><i class="fas fa-unlink"></i></button>
+                                                    </form>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <p class="metric-evidence-empty">尚未关联结题报告、论文、方案、验收记录等佐证文件。</p>
+                            {% endif %}
+                        </div>
+
+                        {% if is_system_admin %}
+                            <div class="metric-card-actions">
+                                <button type="button" class="btn btn-sm btn-primary metric-edit-button"
+                                    data-update-url="{% url 'update_metrics_item' project.project_id item.id %}"
+                                    data-category="{{ item.category }}"
+                                    data-item-name="{{ item.item_name }}"
+                                    data-target-value="{{ item.target_value }}"
+                                    data-current-value="{{ item.current_value }}"
+                                    data-assessment-method="{{ item.assessment_method }}"
+                                    data-progress-percent="{{ item.progress_percent }}"
+                                    data-status="{{ item.status }}"
+                                    data-notes="{{ item.notes }}">
+                                    <i class="fas fa-edit"></i> 更新完成情况
+                                </button>
+                                <form method="post" action="{% url 'delete_metrics_item' project.project_id item.id %}" onsubmit="return confirm('确定删除该指标？课题文件不会被删除。');">
+                                    {% csrf_token %}<button type="submit" class="btn btn-sm btn-text text-danger"><i class="fas fa-trash"></i> 删除指标</button>
+                                </form>
+                            </div>
+                        {% endif %}
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+    {% endfor %}
+{% elif metrics_analysis %}
+    <div class="alert alert-warning">
+        <i class="fas fa-triangle-exclamation"></i>
+        已保留原始分析文字，但尚未形成可跟踪指标。请重新上传任务书分析，或点击“新增指标”手动录入。
+    </div>
+    <div class="analysis-legacy-result">{{ metrics_analysis.analysis_result|linebreaks }}</div>
+{% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-chart-pie"></i></div>
+        <h5>暂无可跟踪指标</h5>
+        <p>上传任务书后，系统会按“具体指标、目标数量、交付/佐证形式”生成指标台账。</p>
+    </div>
+{% endif %}
