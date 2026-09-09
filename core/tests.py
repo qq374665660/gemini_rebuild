@@ -1988,3 +1988,50 @@ class FundingCategoryTests(TestCase):
         self.assertTrue(result['ok'])
         self.assertEqual(result['total'], 1)
         self.assertEqual(result['rows'][0]['project'].project_id, 'SELF-1')
+
+
+class ProjectIdWithSlashUrlTests(TestCase):
+    """课题编号包含 /（如企业标准编号 QB/ZJXK0001-2021）时，路由仍可正常生成与访问。"""
+
+    SLASH_ID = 'QB/ZJXK0001-2021'
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user('slash-admin', password='StrongPass!234', is_staff=True)
+        self.client.force_login(self.admin)
+        self.project = Project.objects.create(
+            project_id=self.SLASH_ID,
+            name='带斜杠编号的课题',
+            ownership='西勘院',
+            managing_unit='测试单位',
+            level='公司级',
+            project_type='应用研究',
+            role='牵头',
+            start_year=2021,
+            status='在研',
+            directory_path='',
+        )
+
+    def test_detail_url_reverses_with_slash(self):
+        self.assertEqual(
+            reverse('project_detail', args=[self.SLASH_ID]),
+            f'/project/{self.SLASH_ID}/',
+        )
+
+    def test_list_page_renders_slash_id_project(self):
+        response = self.client.get(reverse('project_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f'/project/{self.SLASH_ID}/')
+
+    def test_detail_and_file_tree_pages_resolve(self):
+        from .views import create_project_directory_structure
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(PROJECTS_ROOT=Path(temp_dir)):
+                create_project_directory_structure(self.project)
+                detail_response = self.client.get(reverse('project_detail', args=[self.SLASH_ID]))
+                file_tree_response = self.client.get(reverse('get_file_tree', args=[self.SLASH_ID]))
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(file_tree_response.status_code, 200)
