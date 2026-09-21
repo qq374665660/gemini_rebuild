@@ -11,16 +11,24 @@ import re
 import unicodedata
 
 
-EXPENSE_FORMAT_VERSION = '6606-cumulative-debit-v1'
+EXPENSE_FORMAT_VERSION = '6606-lifetime-balance-v2'
 EXPENSE_ACCOUNT_CODE = Decimal('6606')
 EXPENSE_UNIT_DIVISOR = Decimal('10000')
 EXPENSE_UNIT_LABEL = '万元'
+
+OPENING_COLUMN = '期初金额'
+YEAR_DEBIT_COLUMN = '本年累计借方金额'
+YEAR_CREDIT_COLUMN = '本年累计贷方金额'
+LIFETIME_LABEL = '期初+本年累计借方-本年累计贷方'
+
 EXPENSE_REQUIRED_COLUMNS = (
     '公司名称',
     '总账科目',
     '利润中心名称',
     '科研课题文本描述',
-    '本年累计借方金额',
+    OPENING_COLUMN,
+    YEAR_DEBIT_COLUMN,
+    YEAR_CREDIT_COLUMN,
 )
 FULL_COMPANY_NAME = '中国建筑西南勘察设计研究院有限公司'
 SHORT_COMPANY_NAME = '中建西勘院'
@@ -86,12 +94,42 @@ def normalized_expense_description(value):
     return clean_match_text(canonical or value)
 
 
+EXPENSE_CONTAINS_SCORE = 0.95
+
+
 def similarity_score(left, right):
+    """两段归一化文本的相似度：完全相等 1.0，包含关系 0.95，其余按字符相似度。
+
+    包含关系不给满分，是因为课题名常在描述里追加公司名、期次或经费来源；
+    留一点差距才能让“正好同名”的课题优先于“只是被包含”的课题。
+    """
     if not left or not right:
         return 0.0
-    if left in right or right in left:
+    if left == right:
         return 1.0
+    if left in right or right in left:
+        return EXPENSE_CONTAINS_SCORE
     return SequenceMatcher(None, left, right).ratio()
+
+
+def match_candidates(normalized, candidates, threshold):
+    """返回 (最高分, 达到阈值且并列最高的课题编号列表)。
+
+    并列意味着程序无法区分这笔钱属于哪个课题，调用方应交人工确认而不是挑一个。
+    """
+    if not normalized:
+        return 0.0, []
+    scored = [
+        (similarity_score(normalized, candidate['normalized_name']), candidate['project_id'])
+        for candidate in candidates
+    ]
+    if not scored:
+        return 0.0, []
+    best_score = max(score for score, _ in scored)
+    if best_score < threshold:
+        return best_score, []
+    tied = [project_id for score, project_id in scored if score == best_score]
+    return best_score, tied
 
 
 def file_sha256(file_path):
@@ -153,6 +191,25 @@ def _decimal_amount(value, pandas_module=None):
     return (-amount if negative else amount), False
 
 
+def _row_lifetime_amount(row, pandas_module=None):
+    """一行6606记录的全周期累计支出（元），以及是否存在无法解析的金额。
+
+    6606 科目年末不清转，所以“期初金额 + 本年累计借方 - 本年累计贷方”恒等于带符号期末余额，
+    无论导出区间跨年与否都读得出立项以来的累计支出。
+    """
+    total = Decimal('0')
+    invalid = False
+    for column, sign in (
+        (OPENING_COLUMN, Decimal('1')),
+        (YEAR_DEBIT_COLUMN, Decimal('1')),
+        (YEAR_CREDIT_COLUMN, Decimal('-1')),
+    ):
+        amount, invalid_amount = _decimal_amount(row.get(column), pandas_module=pandas_module)
+        invalid = invalid or invalid_amount
+        total += sign * amount
+    return total, invalid
+
+
 def inspect_expense_workbook(file_path):
     """返回第一个符合新月度明细格式的工作表名。"""
     try:
@@ -194,13 +251,15 @@ def _project_completion_date(project):
     )
 
 
-def _company_breakdown(company_totals):
+def _company_breakdown(company_totals, company_row_counts=None):
     company_order = {name: index for index, name in enumerate(TARGET_COMPANIES)}
+    row_counts = company_row_counts or {}
     return [
         {
             'raw_name': name,
             'name': abbreviate_company_name(name) or '未填写公司',
             'total': total,
+            'row_count': row_counts.get(name, 0),
         }
         for name, total in sorted(
             company_totals.items(),
@@ -218,7 +277,7 @@ def _sorted_profit_centers(profit_centers):
 
 
 def analyze_expense_workbook(file_path, projects, mappings=(), threshold=0.85):
-    """按6606、本年累计借方金额和标准化课题名分析一个月度工作簿。"""
+    """按6606、全周期带符号余额和标准化课题名分析一个月度工作簿。"""
     try:
         import pandas as pd
     except Exception as exc:  # pragma: no cover - 仅服务部署缺依赖时触发
@@ -273,7 +332,9 @@ def analyze_expense_workbook(file_path, projects, mappings=(), threshold=0.85):
             _cell_text(row.get('利润中心名称'), pandas_module=pd)
         )
         description = _cell_text(row.get('科研课题文本描述'), pandas_module=pd)
-        amount_yuan, invalid_amount = _decimal_amount(row.get('本年累计借方金额'), pandas_module=pd)
+        # 6606 不做年末结转，全周期累计支出 = 期初金额 + 本年累计借方 - 本年累计贷方。
+        # 单看本年累计借方会在窄区间导出上少算往年支出（实测少 4,548.81 万元）。
+        amount_yuan, invalid_amount = _row_lifetime_amount(row, pandas_module=pd)
         if invalid_amount:
             invalid_amount_total += 1
         amount = amount_yuan / EXPENSE_UNIT_DIVISOR
@@ -301,6 +362,7 @@ def analyze_expense_workbook(file_path, projects, mappings=(), threshold=0.85):
             'total': Decimal('0'),
             'row_count': 0,
             'company_totals': defaultdict(lambda: Decimal('0')),
+            'company_row_counts': defaultdict(int),
         })
         raw_normalized = clean_match_text(description)
         display_description = abbreviate_company_name(description)
@@ -313,6 +375,7 @@ def analyze_expense_workbook(file_path, projects, mappings=(), threshold=0.85):
         group['total'] += amount
         group['row_count'] += 1
         group['company_totals'][company] += amount
+        group['company_row_counts'][company] += 1
 
     project_entries = {}
     unmatched_rows = []
@@ -320,9 +383,9 @@ def analyze_expense_workbook(file_path, projects, mappings=(), threshold=0.85):
 
     for group in description_groups.values():
         normalized = group['normalized']
-        best_score = 0.0
-        best_project_id = None
+        sample_description = '；'.join(group['variants'][:3]) or '-'
         match_method = 'auto'
+        ambiguous_options = []
 
         manual_project_id = mapping_map.get(normalized)
         if manual_project_id is None:
@@ -331,20 +394,27 @@ def analyze_expense_workbook(file_path, projects, mappings=(), threshold=0.85):
                 if manual_project_id is not None:
                     break
         if manual_project_id in project_lookup:
-            best_project_id = manual_project_id
             best_score = 1.0
+            tied_project_ids = [manual_project_id]
             match_method = 'manual'
-        elif normalized:
-            for candidate in candidates:
-                score = similarity_score(normalized, candidate['normalized_name'])
-                if score > best_score:
-                    best_score = score
-                    best_project_id = candidate['project_id']
-                    if best_score == 1.0:
-                        break
+        else:
+            best_score, tied_project_ids = match_candidates(normalized, candidates, threshold)
+            if len(tied_project_ids) > 1:
+                ambiguous_options = [
+                    {
+                        'project_id': project_id,
+                        'project_name': project_lookup[project_id]['project_name'],
+                    }
+                    for project_id in tied_project_ids
+                ]
 
-        sample_description = '；'.join(group['variants'][:3]) or '-'
-        if best_project_id is not None and best_score >= threshold:
+        # 并列说明程序无法判断这笔钱属于哪个课题，挂错代价太大，交人工指定。
+        if len(tied_project_ids) == 1:
+            best_project_id = tied_project_ids[0]
+        else:
+            best_project_id = None
+
+        if best_project_id is not None:
             project_info = project_lookup[best_project_id]
             entry = project_entries.setdefault(best_project_id, {
                 **project_info,
@@ -355,6 +425,7 @@ def analyze_expense_workbook(file_path, projects, mappings=(), threshold=0.85):
                 'variant_count': 0,
                 'profit_centers': set(),
                 'company_totals': defaultdict(lambda: Decimal('0')),
+                'company_row_counts': defaultdict(int),
                 'match_method': match_method,
             })
             entry['total'] += group['total']
@@ -363,6 +434,8 @@ def analyze_expense_workbook(file_path, projects, mappings=(), threshold=0.85):
             entry['profit_centers'].update(group['profit_centers'])
             for company, total in group['company_totals'].items():
                 entry['company_totals'][company] += total
+            for company, count in group['company_row_counts'].items():
+                entry['company_row_counts'][company] += count
             if best_score >= entry['max_score']:
                 entry['max_score'] = best_score
                 entry['sample_desc'] = sample_description
@@ -372,7 +445,7 @@ def analyze_expense_workbook(file_path, projects, mappings=(), threshold=0.85):
 
         for company, total in group['company_totals'].items():
             unmatched_company_totals[company] += total
-        company_breakdown = _company_breakdown(group['company_totals'])
+        company_breakdown = _company_breakdown(group['company_totals'], group['company_row_counts'])
         unmatched_rows.append({
             'company': '；'.join(item['name'] for item in company_breakdown) or '-',
             'company_breakdown': company_breakdown,
@@ -380,8 +453,9 @@ def analyze_expense_workbook(file_path, projects, mappings=(), threshold=0.85):
             'description': sample_description,
             'canonical_description': group['canonical_description'] or '-',
             'amount': group['total'],
-            'best_name': project_lookup[best_project_id]['project_name'] if best_project_id else '-',
+            'best_name': '／'.join(option['project_name'] for option in ambiguous_options[:3]) if ambiguous_options else '-',
             'best_score': best_score,
+            'ambiguous_options': ambiguous_options,
             'row_count': group['row_count'],
             'variant_count': max(len(group['variants']), 1),
         })
@@ -393,7 +467,10 @@ def analyze_expense_workbook(file_path, projects, mappings=(), threshold=0.85):
     for entry in project_entries.values():
         entry['profit_centers'] = _sorted_profit_centers(entry['profit_centers'])
         entry['profit_center_names'] = '；'.join(entry['profit_centers']) or '-'
-        entry['company_breakdown'] = _company_breakdown(entry.pop('company_totals'))
+        entry['company_breakdown'] = _company_breakdown(
+            entry.pop('company_totals'), entry['company_row_counts']
+        )
+        entry['company_row_counts'] = dict(entry['company_row_counts'])
         entry['company_names'] = '；'.join(item['name'] for item in entry['company_breakdown']) or '-'
         for item in entry['company_breakdown']:
             matched_company_totals[item['raw_name']] += item['total']

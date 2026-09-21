@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from cryptography.fernet import Fernet
 import base64
+from decimal import Decimal
 import os
 
 class Project(models.Model):
@@ -77,11 +78,11 @@ class Project(models.Model):
     extension_date = models.DateField(null=True, blank=True, verbose_name="延期时间")
     actual_completion_date = models.DateField(null=True, blank=True, verbose_name="实际结题时间")
 
-    # 经费预算 (使用DecimalField以保证精度)
-    total_budget = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="总预算(万元)")
-    external_funding = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="外部专项经费(万元)")
-    institute_funding = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="院自筹经费(万元)")
-    unit_funding = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="所属单位自筹经费(万元)")
+    # 经费预算 (使用DecimalField以保证精度；金额单位统一为万元)
+    total_budget = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="总预算")
+    external_funding = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="外部专项")
+    institute_funding = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="院专项")
+    unit_funding = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="单位自筹")
 
     # 描述性内容
     research_content = models.TextField(blank=True, verbose_name="主要研究内容")
@@ -101,6 +102,25 @@ class Project(models.Model):
         status = cls.STATUS_ALIASES.get(status, status)
         valid_statuses = {choice[0] for choice in cls.STATUS_CHOICES}
         return status if status in valid_statuses else ''
+
+    BUDGET_PART_FIELDS = ('external_funding', 'institute_funding', 'unit_funding')
+
+    def clean(self):
+        super().clean()
+        parts = [getattr(self, field) for field in self.BUDGET_PART_FIELDS]
+        if self.total_budget is None or any(part is None for part in parts):
+            # 历史总表和任务书常只给部分经费，缺项时不臆造总预算。
+            return
+        expected = sum(parts, Decimal('0'))
+        if abs(self.total_budget - expected) > Decimal('0.01'):
+            labels = '、'.join(
+                self._meta.get_field(field).verbose_name for field in self.BUDGET_PART_FIELDS
+            )
+            raise ValidationError({
+                'total_budget': ValidationError(
+                    f'总预算应等于{labels}之和（{expected} 万元），当前为 {self.total_budget} 万元。'
+                )
+            })
 
     def __str__(self):
         return self.name
@@ -498,11 +518,11 @@ class ExpenseSnapshot(models.Model):
     )
     project = models.ForeignKey(
         Project,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='expense_snapshots',
-        verbose_name="关联课题"
+        verbose_name="关联课题",
     )
     funding_category = models.CharField(
         max_length=20,
@@ -525,6 +545,178 @@ class ExpenseSnapshot(models.Model):
         verbose_name = "支出快照"
         verbose_name_plural = "支出快照"
         ordering = ['-created_at']
+
+
+class SpecialLedgerImport(models.Model):
+    """专项经费面板使用的一次台账导入。"""
+
+    LEDGER_TYPE_CHOICES = [
+        ('external', '外部立项课题'),
+        ('institute', '院自主立项课题'),
+    ]
+    FORMAT_VERSION = 'special-ledger-v1'
+
+    ledger_type = models.CharField(
+        max_length=20,
+        choices=LEDGER_TYPE_CHOICES,
+        db_index=True,
+        verbose_name="台账类别",
+    )
+    source_file = models.CharField(max_length=512, verbose_name="数据来源文件")
+    original_filename = models.CharField(max_length=255, blank=True, verbose_name="原始文件名")
+    file_sha256 = models.CharField(max_length=64, blank=True, db_index=True, verbose_name="文件哈希")
+    format_version = models.CharField(max_length=50, default=FORMAT_VERSION, verbose_name="数据口径版本")
+    sheet_name = models.CharField(max_length=50, default='汇总表', verbose_name="工作表")
+    row_total = models.PositiveIntegerField(default=0, verbose_name="台账课题数")
+    matched_total = models.PositiveIntegerField(default=0, verbose_name="已关联课题数")
+    ambiguous_total = models.PositiveIntegerField(default=0, verbose_name="待确认课题数")
+    ignored_total = models.PositiveIntegerField(default=0, verbose_name="忽略课题数")
+    totals = models.JSONField(default=dict, blank=True, verbose_name="汇总金额(万元)")
+    ignored_detail = models.JSONField(default=list, blank=True, verbose_name="忽略课题清单")
+    file_mtime = models.DateTimeField(null=True, blank=True, verbose_name="文件更新时间")
+    created_by = models.ForeignKey(
+        'auth.User',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='special_ledger_imports',
+        verbose_name="导入人",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="导入时间")
+
+    def __str__(self):
+        return f"{self.get_ledger_type_display()}台账 @ {self.created_at:%Y-%m-%d %H:%M}"
+
+    class Meta:
+        verbose_name = "专项经费台账导入"
+        verbose_name_plural = "专项经费台账导入"
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ledger_type', 'file_sha256'],
+                condition=~models.Q(file_sha256=''),
+                name='unique_special_ledger_file_hash',
+            ),
+        ]
+
+
+class SpecialLedgerRow(models.Model):
+    """台账汇总表里的一行课题，金额已折算为万元。"""
+
+    MATCH_STATE_CHOICES = [
+        ('exact', '同名唯一匹配'),
+        ('manual', '人工指定'),
+        ('ambiguous', '系统重名待确认'),
+        ('unmatched', '系统无此课题'),
+    ]
+
+    import_log = models.ForeignKey(
+        SpecialLedgerImport,
+        on_delete=models.CASCADE,
+        related_name='rows',
+        verbose_name="导入批次",
+    )
+    ledger_type = models.CharField(
+        max_length=20,
+        choices=SpecialLedgerImport.LEDGER_TYPE_CHOICES,
+        db_index=True,
+        verbose_name="台账类别",
+    )
+    row_number = models.PositiveIntegerField(default=0, verbose_name="源表行号")
+    sequence = models.CharField(max_length=50, blank=True, verbose_name="台账序号")
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='special_ledger_rows',
+        verbose_name="关联课题",
+    )
+    ledger_name = models.CharField(max_length=255, verbose_name="台账课题名称")
+    owning_unit = models.CharField(max_length=100, blank=True, verbose_name="归属单位")
+    funder = models.CharField(max_length=100, blank=True, verbose_name="经费来源")
+    ledger_status = models.CharField(max_length=50, blank=True, verbose_name="台账研发进度")
+    principal = models.CharField(max_length=50, blank=True, verbose_name="课题负责人")
+    start_text = models.CharField(max_length=50, blank=True, verbose_name="开始时间")
+    end_text = models.CharField(max_length=50, blank=True, verbose_name="结束时间")
+    match_state = models.CharField(
+        max_length=20,
+        choices=MATCH_STATE_CHOICES,
+        default='unmatched',
+        db_index=True,
+        verbose_name="匹配情况",
+    )
+    contract_total = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True, verbose_name="课题合同经费")
+    contract_allocated = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True, verbose_name="归属本院合同经费")
+    received_amount = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True, verbose_name="已到账经费")
+    approved_budget = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True, verbose_name="预算额度")
+    executed_total = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True, verbose_name="总执行额度")
+    remaining_amount = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True, verbose_name="可支出经费")
+    year_disposable = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True, verbose_name="本年度可支配经费")
+    year_budget = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True, verbose_name="本年预算额")
+    year_executed = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True, verbose_name="本年执行额度")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="建立时间")
+
+    @property
+    def budget_amount(self):
+        """外部课题以已到账经费为基准，院自主课题以预算额度为基准。"""
+        if self.ledger_type == 'external':
+            return self.received_amount
+        return self.approved_budget
+
+    @property
+    def execution_rate(self):
+        budget = self.budget_amount
+        if not budget:
+            return None
+        return (self.executed_total or Decimal('0')) / budget * Decimal('100')
+
+    def __str__(self):
+        return f"{self.ledger_name} - {self.executed_total}"
+
+    class Meta:
+        verbose_name = "专项经费台账明细"
+        verbose_name_plural = "专项经费台账明细"
+        ordering = ['ledger_type', 'row_number']
+
+
+class SpecialLedgerAssignment(models.Model):
+    """台账行与系统课题的人工对应关系，用于消解重名歧义。"""
+
+    ledger_type = models.CharField(max_length=20, choices=SpecialLedgerImport.LEDGER_TYPE_CHOICES, verbose_name="台账类别")
+    ledger_name = models.CharField(max_length=255, verbose_name="台账课题名称")
+    normalized_name = models.CharField(max_length=255, verbose_name="标准化名称")
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='special_ledger_assignments',
+        verbose_name="对应课题",
+    )
+    note = models.CharField(max_length=255, blank=True, verbose_name="备注")
+    created_by = models.ForeignKey(
+        'auth.User',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='special_ledger_assignments',
+        verbose_name="确认人",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="确认时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    def __str__(self):
+        return f"{self.ledger_name} -> {self.project.name}"
+
+    class Meta:
+        verbose_name = "专项台账对应关系"
+        verbose_name_plural = "专项台账对应关系"
+        ordering = ['-updated_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ledger_type', 'normalized_name'],
+                name='unique_special_ledger_assignment',
+            ),
+        ]
 
 
 class APIConfig(models.Model):

@@ -18,6 +18,7 @@ class AccessControlMiddleware:
         'query_assistant',
         'progress_monitor',
         'expense_monitor',
+        'special_expense_monitor',
         'get_file_tree',
     }
     account_views = {'logout', 'password_change', 'password_change_done'}

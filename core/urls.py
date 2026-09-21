@@ -21,6 +21,9 @@ urlpatterns = [
     path('assistant/', views.query_assistant_view, name='query_assistant'),
     path('progress/', views.progress_monitor_view, name='progress_monitor'),
     path('self-funded/progress/', views.self_funded_progress_monitor_view, name='self_funded_progress_monitor'),
+    path('expense/special/', views.special_expense_monitor_view, name='special_expense_monitor'),
+    path('expense/special/import/', views.special_ledger_import_view, name='special_ledger_import'),
+    path('expense/special/assign/', views.special_ledger_assign_view, name='special_ledger_assign'),
     path('expense/', views.expense_monitor_view, name='expense_monitor'),
     path('self-funded/expense/', views.self_funded_expense_monitor_view, name='self_funded_expense_monitor'),
     path('expense/import/', views.expense_import_view, name='expense_import'),
@@ -30,8 +33,10 @@ urlpatterns = [
     # 课题编号可能包含斜杠（如企业标准编号 QB/ZJXK0001-2021），统一使用 path 转换器。
     # 不带子路径的详情路由必须放在最后：path 转换器贪婪匹配，放在前面会吞掉以下路由。
     path('project/<path:project_id>/file-manager-test/', views.file_manager_trial_view, name='file_manager_trial'),
-    path('project/<path:project_id>/delete/', views.delete_project_view, name='delete_project'),
+    # file 路由必须在 delete 之前：path 转换器贪婪匹配，否则 /project/<id>/file/delete/
+    # 会被 delete 路由吃掉成 project_id='<id>/file'，文件删除请求全部 404。
     path('project/<path:project_id>/file/<str:action>/', views.file_action_view, name='file_action'),
+    path('project/<path:project_id>/delete/', views.delete_project_view, name='delete_project'),
     path('project/<path:project_id>/analyze/<str:analysis_type>/', views.analyze_content_view, name='analyze_content'),
     path('project/<path:project_id>/edit-analysis/<str:analysis_type>/', views.edit_analysis_view, name='edit_analysis'),
     path('project/<path:project_id>/metrics-item/create/', views.create_metrics_item_view, name='create_metrics_item'),

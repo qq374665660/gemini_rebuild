@@ -8,6 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+.venv*/
+venv/
 
 # Local environment files
 .env
@@ -22,6 +24,20 @@ db.sqlite3-*
 staticfiles/
 projects/
 network_config.json
+backups/
+maintenance_backups/
+directory_reconcile_reports/
+projects_duplicate_quarantine/
+
+# Local business data
+zichouktfeiyong/
+科研课题管理总表.xlsx
+
+# Local scratch and tool caches
+tmp/
+.codex_tmp_zhibiao/
+.workbuddy-ai/
+科研课题管理系统产品发布/
 
 # Bundled or machine-specific dependencies
 _vendor/
@@ -29,7 +45,3 @@ _vendor/
 # OS-generated files
 Thumbs.db
 .DS_Store
-
-# Local business data
-zichouktfeiyong/
-科研课题管理总表.xlsx

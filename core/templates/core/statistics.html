@@ -834,7 +834,7 @@
                         </div>
                         <div class="budget-info">
                             <div class="budget-amount">{{ budget_stats.external_funding_sum|floatformat:0|default:"0" }}</div>
-                            <div class="budget-label">外部专项经费 (万元)</div>
+                            <div class="budget-label">外部专项 (万元)</div>
                         </div>
                     </div>
                     <div class="budget-card institute">
@@ -843,7 +843,7 @@
                         </div>
                         <div class="budget-info">
                             <div class="budget-amount">{{ budget_stats.institute_funding_sum|floatformat:0|default:"0" }}</div>
-                            <div class="budget-label">院自筹经费 (万元)</div>
+                            <div class="budget-label">院专项 (万元)</div>
                         </div>
                     </div>
                     <div class="budget-card unit">
@@ -852,7 +852,7 @@
                         </div>
                         <div class="budget-info">
                             <div class="budget-amount">{{ budget_stats.unit_funding_sum|floatformat:0|default:"0" }}</div>
-                            <div class="budget-label">单位自筹经费 (万元)</div>
+                            <div class="budget-label">单位自筹 (万元)</div>
                         </div>
                     </div>
                     <div class="budget-card average">
@@ -1424,9 +1424,9 @@
                 ['进行中课题', '{{ ongoing_projects }}'],
                 ['已完成课题', '{{ completed_projects }}'],
                 ['总预算(万元)', '{{ budget_stats.total_budget_sum|floatformat:0|default:"0" }}'],
-                ['外部专项经费(万元)', '{{ budget_stats.external_funding_sum|floatformat:0|default:"0" }}'],
-                ['院自筹经费(万元)', '{{ budget_stats.institute_funding_sum|floatformat:0|default:"0" }}'],
-                ['单位自筹经费(万元)', '{{ budget_stats.unit_funding_sum|floatformat:0|default:"0" }}'],
+                ['外部专项(万元)', '{{ budget_stats.external_funding_sum|floatformat:0|default:"0" }}'],
+                ['院专项(万元)', '{{ budget_stats.institute_funding_sum|floatformat:0|default:"0" }}'],
+                ['单位自筹(万元)', '{{ budget_stats.unit_funding_sum|floatformat:0|default:"0" }}'],
                 ['平均预算(万元)', '{{ budget_stats.avg_total_budget|floatformat:1|default:"0" }}'],
                 ['', ''],
                 ['产出指标统计', ''],

@@ -209,7 +209,7 @@
                         <div class="budget-total">
                             <div class="budget-total-copy">
                                 <strong><i class="fas fa-calculator"></i> 总预算自动计算</strong>
-                                <span>外部专项、院专项及所属单位自筹经费之和。</span>
+                                <span>外部专项、院专项及单位自筹之和。</span>
                             </div>
                             <div class="form-field">
                                 <label class="field-label" for="{{ form.total_budget.id_for_label }}">总预算</label>
@@ -219,17 +219,17 @@
                         </div>
                         <div class="form-grid three-columns">
                             <div class="form-field">
-                                <label class="field-label" for="{{ form.external_funding.id_for_label }}">外部专项经费</label>
+                                <label class="field-label" for="{{ form.external_funding.id_for_label }}">外部专项</label>
                                 {{ form.external_funding }}
                                 {% for error in form.external_funding.errors %}<div class="field-error"><i class="fas fa-circle-exclamation"></i>{{ error }}</div>{% endfor %}
                             </div>
                             <div class="form-field">
-                                <label class="field-label" for="{{ form.institute_funding.id_for_label }}">院专项经费</label>
+                                <label class="field-label" for="{{ form.institute_funding.id_for_label }}">院专项</label>
                                 {{ form.institute_funding }}
                                 {% for error in form.institute_funding.errors %}<div class="field-error"><i class="fas fa-circle-exclamation"></i>{{ error }}</div>{% endfor %}
                             </div>
                             <div class="form-field">
-                                <label class="field-label" for="{{ form.unit_funding.id_for_label }}">所属单位自筹经费</label>
+                                <label class="field-label" for="{{ form.unit_funding.id_for_label }}">单位自筹</label>
                                 {{ form.unit_funding }}
                                 {% for error in form.unit_funding.errors %}<div class="field-error"><i class="fas fa-circle-exclamation"></i>{{ error }}</div>{% endfor %}
                             </div>
@@ -410,8 +410,8 @@
         const labels = {
             project_id: '课题编号', name: '课题名称', managing_unit: '归口单位', ownership: '课题归属',
             project_lead: '课题负责人', contact_person: '课题联系人', start_date: '开始日期',
-            planned_end_date: '计划结束日期', total_budget: '总预算', external_funding: '外部专项经费',
-            institute_funding: '院专项经费', unit_funding: '所属单位自筹经费', research_content_manual: '主要研究内容'
+            planned_end_date: '计划结束日期', total_budget: '总预算', external_funding: '外部专项',
+            institute_funding: '院专项', unit_funding: '单位自筹', research_content_manual: '主要研究内容'
         };
         button.addEventListener('click', async () => {
             const file = upload.files[0];

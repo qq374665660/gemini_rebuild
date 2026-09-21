@@ -1,0 +1,219 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>专项经费面板 - 科研课题管理系统</title>
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=3.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/components.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/expense-monitor.css' %}?v=2.1">
+    <link rel="stylesheet" href="{% static 'core/css/page-title-card.css' %}?v=1.0">
+    <link rel="stylesheet" href="{% static 'core/vendor/fontawesome/css/all.min.css' %}?v=6.0.0">
+</head>
+<body>
+    <div class="app-layout">
+        {% include 'core/partials/navbar.html' %}
+        <main class="app-main">
+            <div class="app-content">
+                <div class="page-header standalone-title-card">
+                    <div class="container">
+                        <div class="page-header-content">
+                            <div>
+                                <h1 class="page-title"><i class="fas fa-sack-dollar"></i> 专项经费面板</h1>
+                                <p class="page-subtitle">
+                                    专项经费 = 外部专项 + 院专项。数据来源为《外部立项课题经费管理台账》与《院自主立项课题经费管理台账》，口径为课题全周期执行情况。
+                                </p>
+                            </div>
+                            <div class="page-actions"><a href="{% url 'expense_monitor' %}" class="btn btn-secondary"><i class="fas fa-coins"></i> 归集经费监控</a></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="container" style="margin-top:-18px;margin-bottom:18px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <a href="{% url 'special_expense_monitor' %}" class="btn {% if not ledger_type %}btn-primary{% else %}btn-secondary{% endif %}">全部专项课题</a>
+                    {% for value, label in ledger_type_options %}
+                        <a href="?ledger_type={{ value }}" class="btn {% if ledger_type == value %}btn-primary{% else %}btn-secondary{% endif %}">{{ label }}</a>
+                    {% endfor %}
+                    <span class="text-muted" style="align-self:center;margin-left:8px;">金额单位：{{ unit_label }}</span>
+                </div>
+
+                <div class="page-body">
+                    <div class="container">
+                        {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags }}"><i class="fas fa-{% if message.tags == 'success' %}check-circle{% elif message.tags == 'error' %}exclamation-circle{% else %}info-circle{% endif %}"></i> {{ message }}</div>{% endfor %}{% endif %}
+
+                        <div class="content-section expense-upload-panel">
+                            <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-file-arrow-up"></i> 上传经费管理台账</h3></div>
+                            <div class="content-section-body">
+                                <p class="expense-help-text">分别上传两本台账的原始文件即可，系统读取“汇总表”并按课题名称与系统课题对应。台账表头虽写“单位：万元”，实际填的是元，系统会自动换算。</p>
+                                {% if is_system_admin %}
+                                    <div class="special-ledger-upload-grid">
+                                        {% for value, label in ledger_type_options %}
+                                            <form method="post" action="{% url 'special_ledger_import' %}" enctype="multipart/form-data" class="expense-upload-form">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="ledger_type" value="{{ value }}">
+                                                <div class="form-group">
+                                                    <label for="ledger_file_{{ value }}">{{ label }}台账</label>
+                                                    <input type="file" id="ledger_file_{{ value }}" name="ledger_file" class="form-control" accept=".xlsx" required>
+                                                </div>
+                                                <button type="submit" class="btn btn-primary"><i class="fas fa-cloud-arrow-up"></i> 导入{{ label }}台账</button>
+                                            </form>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}<div class="alert alert-info">当前账号为只读账号，只有系统管理员可以导入台账。</div>{% endif %}
+                                <div class="expense-meta-grid">
+                                    {% for value, label in ledger_type_options %}
+                                        {% for key, import_log in imports.items %}
+                                            {% if key == value %}
+                                                <div class="expense-meta-card"><span class="label">{{ label }} · 导入时间</span><span class="value">{{ import_log.created_at|date:"Y-m-d H:i" }}</span></div>
+                                                <div class="expense-meta-card"><span class="label">{{ label }} · 源表课题</span><span class="value">{{ import_log.row_total }} 个</span></div>
+                                                <div class="expense-meta-card"><span class="label">{{ label }} · 已关联</span><span class="value">{{ import_log.matched_total }} 个</span></div>
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+
+                        {% if not imports %}
+                            <div class="content-section"><div class="content-section-body">
+                                <div class="empty-state"><i class="fas fa-inbox"></i><p>还没有导入经费管理台账。上传后这里会显示专项经费的执行情况。</p></div>
+                            </div></div>
+                        {% else %}
+                            <div class="stats-grid">
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-flask"></i></div><div class="stat-card-value">{{ active_summary.count }}</div><div class="stat-card-label">在研/延期专项课题</div></div>
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-database"></i></div><div class="stat-card-value">{{ active_summary.budget|floatformat:2 }}</div><div class="stat-card-label">在研专项经费({{ unit_label }})</div></div>
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-money-bill-transfer"></i></div><div class="stat-card-value">{{ active_summary.executed|floatformat:2 }}</div><div class="stat-card-label">已执行({{ unit_label }})</div></div>
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-percentage"></i></div><div class="stat-card-value">{% if active_summary.rate is not None %}{{ active_summary.rate|floatformat:1 }}%{% else %}-{% endif %}</div><div class="stat-card-label">整体执行率</div></div>
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-wallet"></i></div><div class="stat-card-value">{{ active_summary.remaining|floatformat:2 }}</div><div class="stat-card-label">剩余可支出({{ unit_label }})</div></div>
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-calendar-day"></i></div><div class="stat-card-value">{{ active_summary.year_executed|floatformat:2 }}</div><div class="stat-card-label">本年已执行({{ unit_label }})</div></div>
+                            </div>
+
+                            <div class="content-section">
+                                <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-triangle-exclamation"></i> 执行风险提醒 ({{ risk_rows|length }})</h3></div>
+                                <div class="content-section-body">
+                                    {% if risk_rows %}
+                                        <div class="table-responsive"><table class="table expense-table">
+                                            <thead><tr><th>课题名称</th><th>台账类别</th><th>归属单位</th><th>专项经费</th><th>已执行</th><th>剩余可支出</th><th>执行率</th><th>提醒</th></tr></thead>
+                                            <tbody>{% for item in risk_rows %}<tr class="expense-over-row">
+                                                <td>{% if item.project %}<a href="{% url 'project_detail' item.project.project_id %}">{{ item.row.ledger_name }}</a>{% else %}{{ item.row.ledger_name }}{% endif %}</td>
+                                                <td>{{ item.row.get_ledger_type_display }}</td>
+                                                <td>{{ item.row.owning_unit|default:"-" }}</td>
+                                                <td>{{ item.row.budget_amount|floatformat:2 }}</td>
+                                                <td>{{ item.row.executed_total|floatformat:2 }}</td>
+                                                <td class="{% if item.row.remaining_amount < 0 %}text-danger{% endif %}">{{ item.row.remaining_amount|floatformat:2 }}</td>
+                                                <td>{% if item.row.execution_rate is not None %}<div class="special-rate"><div class="special-rate-track"><div class="special-rate-fill" style="width:{% if item.row.execution_rate > 100 %}100{% else %}{{ item.row.execution_rate|floatformat:1 }}{% endif %}%"></div></div><span>{{ item.row.execution_rate|floatformat:1 }}%</span>{% else %}-{% endif %}</td>
+                                                <td>{% if item.row.remaining_amount is not None and item.row.remaining_amount < 0 %}<span class="badge badge-danger">可支出为负</span> {% endif %}{% if item.row.year_disposable is not None and item.row.year_disposable < 0 %}<span class="badge badge-danger">本年可支配为负</span> {% endif %}{% if item.row.execution_rate is not None and item.row.execution_rate >= high_rate %}<span class="badge badge-warning">执行率≥{{ high_rate }}%</span>{% endif %}</td>
+                                            </tr>{% endfor %}</tbody>
+                                        </table></div>
+                                    {% else %}<div class="empty-state"><i class="fas fa-check-circle"></i><p>在研专项课题中暂无可支出为负或执行率超阈值的课题。</p></div>{% endif %}
+                                </div>
+                            </div>
+
+                            {% if growth_rows %}
+                                <div class="content-section">
+                                    <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-arrow-trend-up"></i> 相比上次台账执行额增加 ({{ growth_rows|length }})</h3></div>
+                                    <div class="content-section-body">
+                                        <div class="table-responsive"><table class="table expense-table">
+                                            <thead><tr><th>课题名称</th><th>台账类别</th><th>上次已执行</th><th>本次已执行</th><th>新增({{ unit_label }})</th></tr></thead>
+                                            <tbody>{% for item in growth_rows %}<tr class="expense-alert-row">
+                                                <td>{% if item.project %}<a href="{% url 'project_detail' item.project.project_id %}">{{ item.row.ledger_name }}</a>{% else %}{{ item.row.ledger_name }}{% endif %}</td>
+                                                <td>{{ item.row.get_ledger_type_display }}</td>
+                                                <td>{{ item.previous_total|floatformat:2 }}</td>
+                                                <td>{{ item.row.executed_total|floatformat:2 }}</td>
+                                                <td class="text-danger">+{{ item.increase|floatformat:2 }}</td>
+                                            </tr>{% endfor %}</tbody>
+                                        </table></div>
+                                    </div>
+                                </div>
+                            {% endif %}
+
+                            <div class="content-section" id="active-projects">
+                                <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-flask"></i> 在研 / 延期专项课题执行 ({{ active_rows|length }})</h3></div>
+                                <div class="content-section-body">
+                                    {% if active_rows %}
+                                        <div class="table-responsive"><table class="table expense-table">
+                                            <thead><tr><th>课题名称</th><th>台账类别</th><th>归属单位</th><th>经费来源</th><th>专项经费</th><th>已执行</th><th>剩余</th><th>执行率</th><th>本年预算</th><th>本年执行</th><th>与系统登记</th></tr></thead>
+                                            <tbody>{% for item in active_rows %}<tr>
+                                                <td><a href="{% url 'project_detail' item.project.project_id %}">{{ item.row.ledger_name }}</a><div class="text-muted"><small>{{ item.project.project_id }} · {{ item.system_status }}</small></div></td>
+                                                <td>{{ item.row.get_ledger_type_display }}</td>
+                                                <td>{{ item.row.owning_unit|default:"-" }}</td>
+                                                <td>{{ item.row.funder|default:"-" }}</td>
+                                                <td>{{ item.row.budget_amount|floatformat:2 }}</td>
+                                                <td>{{ item.row.executed_total|floatformat:2 }}</td>
+                                                <td class="{% if item.row.remaining_amount < 0 %}text-danger{% endif %}">{{ item.row.remaining_amount|floatformat:2 }}</td>
+                                                <td>{% if item.row.execution_rate is not None %}<div class="special-rate"><div class="special-rate-track"><div class="special-rate-fill" style="width:{% if item.row.execution_rate > 100 %}100{% else %}{{ item.row.execution_rate|floatformat:1 }}{% endif %}%"></div></div><span>{{ item.row.execution_rate|floatformat:1 }}%</span>{% else %}-{% endif %}</td>
+                                                <td>{{ item.row.year_budget|floatformat:2 }}</td>
+                                                <td>{{ item.row.year_executed|floatformat:2 }}</td>
+                                                <td>{% if item.budget_gap is None %}<span class="text-muted">-</span>{% elif item.budget_gap > 0 or item.budget_gap < 0 %}<span class="badge badge-warning" title="台账 {{ item.row.budget_amount }} / 系统 {{ item.system_budget }}">差 {{ item.budget_gap|floatformat:2 }}</span>{% else %}<span class="badge badge-success">一致</span>{% endif %}</td>
+                                            </tr>{% endfor %}</tbody>
+                                        </table></div>
+                                        <div class="table-footnote text-muted">“与系统登记”比对的是课题档案里的外部专项 / 院专项，台账为财务到账口径，两者口径不同，仅供核对照。</div>
+                                    {% else %}<div class="empty-state"><i class="fas fa-folder-open"></i><p>暂无已关联且在研的专项课题。</p></div>{% endif %}
+                                </div>
+                            </div>
+
+                            {% if pending_rows %}
+                                <div class="content-section" id="pending-mapping">
+                                    <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-circle-question"></i> 系统重名待确认 ({{ pending_rows|length }})</h3></div>
+                                    <div class="content-section-body">
+                                        <div class="alert alert-warning">系统里存在同名课题，金额挂错代价较大，请手工指定归属后再计入统计。</div>
+                                        <div class="table-responsive"><table class="table expense-table">
+                                            <thead><tr><th>台账课题</th><th>台账类别</th><th>已执行({{ unit_label }})</th><th>系统同名课题</th><th>指定归属</th></tr></thead>
+                                            <tbody>{% for item in pending_rows %}<tr>
+                                                <td>{{ item.row.ledger_name }}</td>
+                                                <td>{{ item.row.get_ledger_type_display }}</td>
+                                                <td>{{ item.row.executed_total|floatformat:2 }}</td>
+                                                <td>{% for candidate in item.candidates %}<div><code>{{ candidate.project_id }}</code> {{ candidate.name }} · {{ candidate.status }} · 总预算 {{ candidate.total_budget|floatformat:2 }}</div>{% endfor %}</td>
+                                                <td>{% if is_system_admin %}<form method="post" action="{% url 'special_ledger_assign' %}" class="mapping-form">{% csrf_token %}<input type="hidden" name="ledger_type" value="{{ item.row.ledger_type }}"><input type="hidden" name="ledger_name" value="{{ item.row.ledger_name }}"><div class="mapping-controls"><input name="project_id" class="form-control form-control-sm" placeholder="输入课题编号" autocomplete="off" required><button type="submit" class="btn btn-sm btn-primary">指定</button></div></form>{% else %}-{% endif %}</td>
+                                            </tr>{% endfor %}</tbody>
+                                        </table></div>
+                                    </div>
+                                </div>
+                            {% endif %}
+
+                            <div class="content-section">
+                                <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-box-archive"></i> 结题 / 终止等其他状态课题 ({{ closed_rows|length }})</h3></div>
+                                <div class="content-section-body">
+                                    {% if closed_rows %}
+                                        <div class="table-responsive"><table class="table expense-table">
+                                            <thead><tr><th>课题名称</th><th>台账类别</th><th>台账进度</th><th>系统状态</th><th>专项经费</th><th>已执行</th><th>剩余</th><th>执行率</th></tr></thead>
+                                            <tbody>{% for item in closed_rows %}<tr>
+                                                <td>{% if item.project %}<a href="{% url 'project_detail' item.project.project_id %}">{{ item.row.ledger_name }}</a>{% else %}{{ item.row.ledger_name }}{% endif %}</td>
+                                                <td>{{ item.row.get_ledger_type_display }}</td>
+                                                <td>{{ item.row.ledger_status|default:"-" }}</td>
+                                                <td>{{ item.system_status|default:"未关联" }}</td>
+                                                <td>{{ item.row.budget_amount|floatformat:2 }}</td>
+                                                <td>{{ item.row.executed_total|floatformat:2 }}</td>
+                                                <td>{{ item.row.remaining_amount|floatformat:2 }}</td>
+                                                <td>{% if item.row.execution_rate is not None %}{{ item.row.execution_rate|floatformat:1 }}%{% else %}-{% endif %}</td>
+                                            </tr>{% endfor %}</tbody>
+                                        </table></div>
+                                    {% else %}<div class="empty-state"><i class="fas fa-check"></i><p>暂无其他状态的专项课题。</p></div>{% endif %}
+                                </div>
+                            </div>
+
+                            {% if ignored_rows %}
+                                <div class="content-section" id="ignored-projects">
+                                    <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-eye-slash"></i> 台账有、系统无（已忽略 {{ ignored_rows|length }} 个）</h3></div>
+                                    <div class="content-section-body">
+                                        <div class="alert alert-info">按当前规则，系统里没有的课题不参与统计。如需纳入，请先在课题管理中建档，再重新导入台账。</div>
+                                        <div class="table-responsive"><table class="table expense-table">
+                                            <thead><tr><th>台账课题</th><th>台账类别</th><th>经费来源</th><th>台账进度</th><th>已执行({{ unit_label }})</th></tr></thead>
+                                            <tbody>{% for item in ignored_rows %}<tr>
+                                                <td>{{ item.ledger_name }}</td><td>{{ item.ledger_type_label }}</td><td>{{ item.funder|default:"-" }}</td><td>{{ item.ledger_status }}</td><td>{% if item.executed_amount is not None %}{{ item.executed_amount|floatformat:2 }}{% else %}-{% endif %}</td>
+                                            </tr>{% endfor %}</tbody>
+                                        </table></div>
+                                    </div>
+                                </div>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

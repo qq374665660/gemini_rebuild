@@ -8,13 +8,14 @@ from django.utils.encoding import force_str
 import shutil
 import os
 import re
+import logging
 import mimetypes
 import time
 import tempfile
 import subprocess
 import uuid
 import hashlib
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from .models import (
     Project,
@@ -28,6 +29,9 @@ from .models import (
     ExpenseSnapshot,
     ExpenseMapping,
     OperationLog,
+    SpecialLedgerImport,
+    SpecialLedgerRow,
+    SpecialLedgerAssignment,
 )
 from .forms import ProjectForm
 import openpyxl
@@ -65,6 +69,7 @@ from .ai_providers import (
 from .expense_analysis import (
     EXPENSE_FORMAT_VERSION,
     EXPENSE_UNIT_LABEL,
+    LIFETIME_LABEL,
     TARGET_COMPANIES,
     ExpenseWorkbookError,
     abbreviate_company_name,
@@ -75,6 +80,14 @@ from .expense_analysis import (
     normalized_expense_description,
     similarity_score,
 )
+from .special_ledger import (
+    LEDGER_SYSTEM_COMPARISON_FIELD,
+    SpecialLedgerError,
+    normalize_project_name,
+    parse_special_ledger,
+)
+
+logger = logging.getLogger(__name__)
 
 def _normalize_path(path_str):
     normalized = os.path.normpath(path_str)
@@ -111,6 +124,35 @@ def _relpath_for_tree(item_path, base_path):
     except ValueError:
         rel_path = str(item_path)
     return rel_path.replace('\\', '/')
+
+def _resolve_within_root(root, relative_path):
+    """把相对路径解析到课题目录内；越界或指到课题根目录本身都返回 None。
+
+    课题根目录就是该课题全部资料，_is_within_root 认为 '.' 属于根内，
+    删除/重命名必须额外排除根目录，否则一次请求就能清空整个课题。
+    """
+    if relative_path is None or str(relative_path).strip() == '':
+        return None
+    target = os.path.normpath(_build_abs_path(root, relative_path))
+    if not _is_within_root(target, root):
+        return None
+    if os.path.normcase(os.path.normpath(target)) == os.path.normcase(os.path.normpath(str(root))):
+        return None
+    return target
+
+
+def _unique_upload_path(target_dir, filename, max_suffix=999):
+    """同名文件不覆盖，自动改成 名称_1.ext；上传不应静默丢资料。"""
+    candidate = os.path.join(target_dir, filename)
+    if not os.path.exists(candidate):
+        return candidate
+
+    stem, ext = os.path.splitext(filename)
+    for index in range(1, max_suffix + 1):
+        candidate = os.path.join(target_dir, f"{stem}_{index}{ext}")
+        if not os.path.exists(candidate):
+            return candidate
+    return os.path.join(target_dir, f"{stem}_{int(time.time())}{ext}")
 
 def _get_progress_end_date(project):
     """进度监控使用延期日期；未填写延期日期时使用计划结题日期。"""
@@ -387,6 +429,36 @@ def _get_project_folder_name(project):
     name = _sanitize_folder_segment(project.name, '未命名课题')
     return f"{start_year}-{status}-{project_id}-{name}"
 
+def _find_adoptable_legacy_dir(project, expected_folder_name):
+    """目标目录缺失时按编号找旧目录；命中多个或疑似他人目录一律放弃，交人工确认。
+
+    课题编号可能是另一个编号的前缀（如 CSCEC-2017-Z-4 与 CSCEC-2017-Z-48），
+    子串匹配会把别人的课题目录认领过来，因此只在候选唯一、且不属于其他课题时才敢动手。
+    """
+    projects_root = str(settings.PROJECTS_ROOT)
+    if not os.path.isdir(projects_root):
+        return None
+
+    owned = set()
+    for other in Project.objects.exclude(pk=project.pk).only('project_id', 'start_year', 'status', 'name', 'directory_path'):
+        owned.add(_normalize_path(os.path.join(
+            projects_root, _get_project_folder_name(other))))
+        if other.directory_path:
+            owned.add(_normalize_path(other.directory_path))
+
+    candidates = []
+    for item in os.listdir(projects_root):
+        if item == expected_folder_name or project.project_id not in item:
+            continue
+        item_path = os.path.join(projects_root, item)
+        if not os.path.isdir(item_path):
+            continue
+        if _normalize_path(item_path) in owned:
+            return None
+        candidates.append(item_path)
+    return candidates[0] if len(candidates) == 1 else None
+
+
 def create_project_directory_structure(project):
     """根据PRD文档4.3节要求创建课题目录结构"""
     folder_name = _get_project_folder_name(project)
@@ -409,6 +481,15 @@ def create_project_directory_structure(project):
     ]
     
     try:
+        # 目录尚未落地时，先尝试认领唯一可辨认的旧目录，避免新建空目录把资料孤立掉
+        if not os.path.isdir(base_dir):
+            legacy_dir = _find_adoptable_legacy_dir(project, folder_name)
+            if legacy_dir:
+                try:
+                    os.rename(legacy_dir, base_dir)
+                except OSError:
+                    pass
+
         # 确保项目基础目录存在
         os.makedirs(base_dir, exist_ok=True)
 
@@ -430,11 +511,9 @@ def create_project_directory_structure(project):
         if project.directory_path != base_dir:
             project.directory_path = base_dir
             project.save(update_fields=['directory_path'])
-            
-        print(f"项目目录创建成功: {base_dir}")  # 调试信息
-        
+
     except Exception as e:
-        print(f"创建项目目录失败: {e}")  # 调试信息
+        logger.exception('创建项目目录失败: %s', base_dir)
         # 如果创建失败，至少设置一个基本路径
         if not project.directory_path:
             project.directory_path = base_dir
@@ -470,61 +549,6 @@ def rename_project_folder(request, project, old_path):
             project.save(update_fields=['directory_path'])
     elif not os.path.exists(new_path):
         create_project_directory_structure(project)
-
-def get_directory_tree(path, base_path=None):
-    def format_file_size(size_bytes):
-        if size_bytes == 0:
-            return "0 B"
-        size_names = ["B", "KB", "MB", "GB"]
-        i = 0
-        while size_bytes >= 1024 and i < len(size_names) - 1:
-            size_bytes /= 1024.0
-            i += 1
-        return f"{size_bytes:.1f} {size_names[i]}"
-    
-    tree = []
-    if base_path is None:
-        base_path = path
-    if not os.path.isdir(path):
-        return []
-    for item in sorted(os.listdir(path)):
-        item_path = os.path.join(path, item)
-        rel_path = _relpath_for_tree(item_path, base_path)
-        
-        node = {
-            'name': item,
-            'path': rel_path,
-            'type': 'folder' if os.path.isdir(item_path) else 'file',
-        }
-        
-        if os.path.isdir(item_path):
-            children = get_directory_tree(item_path, base_path)
-            node['children'] = children
-            # 复用子节点结果，避免为统计信息重复扫描目录
-            file_count = sum(1 for child in children if child.get('type') == 'file')
-            folder_count = sum(1 for child in children if child.get('type') == 'folder')
-            node['file_count'] = file_count
-            node['folder_count'] = folder_count
-            node['total_items'] = file_count + folder_count
-        else:
-            # Add file size and modification time for files
-            try:
-                file_size = os.path.getsize(item_path)
-                node['size'] = format_file_size(file_size)
-                node['size_bytes'] = file_size
-                # 添加修改时间
-                import datetime
-                mtime = os.path.getmtime(item_path)
-                node['modified_time'] = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
-            except (OSError, IOError):
-                node['size'] = "未知"
-                node['size_bytes'] = 0
-                node['modified_time'] = "未知"
-            node['children'] = []
-        
-        tree.append(node)
-    return tree
-
 
 def get_directory_level(path, base_path=None):
     """读取单层目录，文件夹内容在用户展开时再按需获取。"""
@@ -564,6 +588,8 @@ def get_directory_level(path, base_path=None):
         node = {
             'name': entry.name,
             'path': rel_path,
+            # 模板里拼 ?path= 查询串时直接用，避免文件名含 # & 空格时链接被截断
+            'path_qs': quote(rel_path),
             'type': 'folder' if is_directory else 'file',
             'children': [],
         }
@@ -1032,19 +1058,57 @@ def project_list_view(request, funding_category=None):
     return render(request, 'core/project_list.html', context)
 
 
+BUDGET_FIELDS = ('total_budget', 'external_funding', 'institute_funding', 'unit_funding')
+
+# 导出/导入共用的经费列名以 Project.verbose_name 为准；这里只保留历史总表用过的写法。
+LEGACY_BUDGET_HEADERS = {
+    '总预算': 'total_budget',
+    '预算总额': 'total_budget',
+    '经费合计': 'total_budget',
+    '外部专项经费': 'external_funding',
+    '外部专项资金': 'external_funding',
+    '专项经费': 'external_funding',
+    '院专项经费': 'institute_funding',
+    '院自筹': 'institute_funding',
+    '院自筹经费': 'institute_funding',
+    '所属单位自筹经费': 'unit_funding',
+    '所属单位自筹资金': 'unit_funding',
+    '单位自筹经费': 'unit_funding',
+    '自筹经费': 'unit_funding',
+}
+
+
+def normalize_excel_header(value):
+    """去掉表头里的空格与“（万元）”一类单位标注，用于匹配列名。"""
+    text = force_str(value if value is not None else '').strip()
+    return re.sub(r'[（(]\s*(?:单位[：:]\s*)?万元\s*[)）]|[^\w一-鿿]+', '', text)
+
+
+def budget_header_map():
+    header_map = {}
+    for field_name in BUDGET_FIELDS:
+        verbose_name = Project._meta.get_field(field_name).verbose_name
+        header_map[normalize_excel_header(verbose_name)] = field_name
+    for header, field_name in LEGACY_BUDGET_HEADERS.items():
+        header_map.setdefault(normalize_excel_header(header), field_name)
+    return header_map
+
+
 def export_project_list_view(request, funding_category=None):
     category = _valid_funding_category(funding_category or request.GET.get('funding_category'))
     queryset = _apply_project_filters(Project.objects.filter(funding_category=category), request)
 
     workbook = openpyxl.Workbook()
     worksheet = workbook.active
-    worksheet.title = '课题清单'
+    worksheet.title = '课题清单（单位：万元）'
 
     headers = [
         '课题编号', '课题名称', '课题归属', '归口单位', '课题级别', '课题类型', '参与角色',
         '开始年份', '课题状态', '课题联系人', '课题负责人', '开始日期', '计划结束日期',
-        '延期时间', '实际结题时间', '总预算(万元)', '外部专项经费(万元)', '院自筹经费(万元)',
-        '所属单位自筹经费(万元)', '经费管理类别', '主要研究内容', '备注',
+        '延期时间', '实际结题时间',
+        # 经费四列直接取模型 verbose_name，避免导出与系统字段名再次分叉。
+        *[Project._meta.get_field(field_name).verbose_name for field_name in BUDGET_FIELDS],
+        '经费管理类别', '主要研究内容', '备注',
     ]
     worksheet.append(headers)
 
@@ -1286,7 +1350,7 @@ def expense_monitor_view(request, funding_category=None):
                 ],
             )).encode('utf-8')).hexdigest()[:20]
             analysis_cache_key = (
-                f'expense-analysis-v5:{current_file_hash}:{threshold:.4f}:{project_fingerprint}'
+                f'expense-analysis-v7:{current_file_hash}:{threshold:.4f}:{project_fingerprint}'
             )
             cached_analysis = cache.get(analysis_cache_key)
             if cached_analysis is not None:
@@ -1380,16 +1444,13 @@ def expense_monitor_view(request, funding_category=None):
     for entry in scoped_project_rows:
         for company in entry.get('company_breakdown', []):
             scoped_company_totals[company.get('raw_name') or company.get('company') or ''] += company.get('total', Decimal('0'))
+    # 上传表是两家公司混合的，卡片继续展示全表6606口径（行数和金额来自整表分析），
+    # 本类别只单独展示已匹配金额，避免把类别筛选后的数字误标成全表数字。
     scoped_company_summaries = []
-    for company in TARGET_COMPANIES:
-        total = scoped_company_totals.get(company, Decimal('0'))
+    for summary in analysis['company_summaries']:
         scoped_company_summaries.append({
-            'company': abbreviate_company_name(company),
-            'company_raw': company,
-            'total': total,
-            'matched_total': total,
-            'unmatched_total': Decimal('0'),
-            'row_count': 0,
+            **summary,
+            'scoped_matched_total': scoped_company_totals.get(summary['company_raw'], Decimal('0')),
         })
     scoped_other_company_totals = {
         name: total for name, total in scoped_company_totals.items()
@@ -1404,7 +1465,12 @@ def expense_monitor_view(request, funding_category=None):
         'company_summaries': scoped_company_summaries,
         'other_company_totals': scoped_other_company_totals,
         'other_company_total': sum(scoped_other_company_totals.values(), Decimal('0')),
-        'total_expense_sum': sum((entry.get('total', Decimal('0')) for entry in scoped_project_rows), Decimal('0')),
+        # total_expense_sum 保持整表口径，卡片才不会被标成"6606累计支出合计"却只显示本类别；
+        # 本类别自己的金额单独给 scoped_expense_total。
+        'scoped_expense_total': sum(
+            (entry.get('total', Decimal('0')) for entry in scoped_project_rows), Decimal('0')
+        ),
+        'global_matched_project_total': analysis['matched_project_total'],
     })
 
     growth_alerts = []
@@ -1431,7 +1497,15 @@ def expense_monitor_view(request, funding_category=None):
                 })
         growth_alerts.sort(key=lambda item: item['increase'], reverse=True)
 
-    unmatched_paginator = Paginator(analysis['unmatched_rows'], 25)
+    # 系统里存在同名课题时程序无法判断钱属于哪一条，单独成区让人指定，
+    # 混在未匹配列表里会被当成"匹配不上"而忽略掉。
+    ambiguous_rows = [
+        row for row in analysis['unmatched_rows'] if row['ambiguous_options']
+    ]
+    plain_unmatched_rows = [
+        row for row in analysis['unmatched_rows'] if not row['ambiguous_options']
+    ]
+    unmatched_paginator = Paginator(plain_unmatched_rows, 25)
     unmatched_page_obj = unmatched_paginator.get_page(request.GET.get('unmatched_page'))
     unmatched_pagination_params = request.GET.copy()
     unmatched_pagination_params.pop('unmatched_page', None)
@@ -1445,7 +1519,11 @@ def expense_monitor_view(request, funding_category=None):
         'unmatched_rows': unmatched_page_obj.object_list,
         'unmatched_page_obj': unmatched_page_obj,
         'unmatched_pagination_query': unmatched_pagination_params.urlencode(),
-        'unmatched_total': len(analysis['unmatched_rows']),
+        'unmatched_total': len(plain_unmatched_rows),
+        'ambiguous_rows': ambiguous_rows,
+        'ambiguous_total': len(ambiguous_rows),
+        'ambiguous_amount': sum((row['amount'] for row in ambiguous_rows), Decimal('0')),
+        'unmatched_amount': sum((row['amount'] for row in analysis['unmatched_rows']), Decimal('0')),
         'negative_rows': analysis['negative_rows'][:200],
         'negative_total': len(analysis['negative_rows']),
         'total_rows': analysis['filtered_rows'],
@@ -1465,9 +1543,9 @@ def expense_monitor_view(request, funding_category=None):
         'project_options': project_options,
         'other_company_rows': other_company_rows,
         'account_label': '6606',
-        'amount_column_label': '本年累计借方金额',
+        'amount_column_label': LIFETIME_LABEL,
         **_funding_context(category),
-        'expense_scope_note': '上传表保持混合；系统按已匹配课题的经费管理类别自动分流。未匹配明细仍在公共未匹配区展示。',
+        'expense_scope_note': '上传表保持混合；系统按已匹配课题的经费管理类别自动分流。未匹配与重名待指定的明细仍按整表口径展示。',
     }
     return render(request, 'core/expense_monitor.html', context)
 
@@ -1506,7 +1584,7 @@ def expense_import_view(request):
         request.session['expense_original_filename'] = Path(upload.name).name[:255]
         messages.success(
             request,
-            f'月度支出明细已上传，已识别工作表“{sheet_name}”；系统将按6606和本年累计借方金额生成快照。',
+            f'月度支出明细已上传，已识别工作表“{sheet_name}”；系统将按6606和“期初+本年累计借方-本年累计贷方”生成快照。',
         )
     except ExpenseWorkbookError as exc:
         messages.error(request, f'上传文件未生效：{exc}')
@@ -1556,6 +1634,323 @@ def expense_mapping_view(request):
         separator = '&' if '?' in redirect_url else '?'
         redirect_url = f"{redirect_url}{separator}unmatched_page={unmatched_page}#unmatched-records"
     return redirect(redirect_url)
+
+
+SPECIAL_LEDGER_ACTIVE_STATUSES = ('在研', '延期')
+SPECIAL_LEDGER_HIGH_RATE = Decimal('90')
+
+
+def _decimal_or_none(value):
+    if value is None or value == '':
+        return None
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _special_ledger_store_path(ledger_type, original_name):
+    safe_name = re.sub(r'[^\w.\-]+', '_', Path(original_name).name)[:120] or 'ledger.xlsx'
+    configured = getattr(settings, 'SPECIAL_LEDGER_DIR', None)
+    base = Path(configured) if configured else Path(settings.BASE_DIR) / 'zichouktfeiyong' / '专项台账'
+    return base / f'{ledger_type}_{safe_name}'
+
+
+def _special_ledger_assignment_lookup():
+    return {
+        (assignment.ledger_type, assignment.normalized_name): assignment.project
+        for assignment in SpecialLedgerAssignment.objects.select_related('project')
+    }
+
+
+def _special_ledger_rows(import_log, previous_import):
+    """把台账明细装配成面板行，并按系统课题状态标注。"""
+    previous_executed = {}
+    if previous_import is not None:
+        previous_executed = {
+            row.ledger_name: row.executed_total
+            for row in previous_import.rows.exclude(executed_total=None)
+        }
+
+    rows = []
+    for row in import_log.rows.select_related('project').all():
+        project = row.project
+        system_status = project.status if project else ''
+        is_active = bool(project) and system_status in SPECIAL_LEDGER_ACTIVE_STATUSES
+        system_budget = getattr(project, LEDGER_SYSTEM_COMPARISON_FIELD[import_log.ledger_type], None) if project else None
+        ledger_budget = row.budget_amount
+        budget_gap = None
+        if ledger_budget is not None and system_budget is not None:
+            budget_gap = ledger_budget - Decimal(str(system_budget))
+
+        previous_total = previous_executed.get(row.ledger_name)
+        increase = None
+        if previous_total is not None and row.executed_total is not None:
+            increase = row.executed_total - previous_total
+
+        rows.append({
+            'row': row,
+            'project': project,
+            'is_active': is_active,
+            'system_status': system_status,
+            'system_budget': system_budget,
+            'budget_gap': budget_gap,
+            'previous_total': previous_total,
+            'increase': increase,
+            'ledger_project_mismatch': bool(project) and row.ledger_status
+            and row.ledger_status not in {'——', system_status},
+        })
+    return rows
+
+
+def special_expense_monitor_view(request):
+    """专项经费面板：只看专项课题的外部专项与院专项执行情况。"""
+    ledger_type = str(request.GET.get('ledger_type', '')).strip()
+    if ledger_type not in dict(SpecialLedgerImport.LEDGER_TYPE_CHOICES):
+        ledger_type = ''
+
+    imports = {}
+    previous_imports = {}
+    for candidate, _label in SpecialLedgerImport.LEDGER_TYPE_CHOICES:
+        history = list(SpecialLedgerImport.objects.filter(ledger_type=candidate).order_by('-created_at'))
+        if history:
+            imports[candidate] = history[0]
+            previous_imports[candidate] = history[1] if len(history) > 1 else None
+
+    active_rows = []
+    closed_rows = []
+    pending_rows = []
+    for candidate, import_log in imports.items():
+        for entry in _special_ledger_rows(import_log, previous_imports.get(candidate)):
+            state = entry['row'].match_state
+            if state == 'ambiguous':
+                entry['candidates'] = list(
+                    Project.objects.filter(name=entry['row'].ledger_name).order_by('project_id')
+                )
+                pending_rows.append(entry)
+            elif entry['is_active']:
+                active_rows.append(entry)
+            else:
+                closed_rows.append(entry)
+
+    def sort_key(entry):
+        row = entry['row']
+        return (-(row.executed_total or Decimal('0')), row.ledger_name)
+
+    active_rows.sort(key=sort_key)
+    closed_rows.sort(key=sort_key)
+
+    def summarize(entries):
+        budget = Decimal('0')
+        executed = Decimal('0')
+        remaining = Decimal('0')
+        year_executed = Decimal('0')
+        for entry in entries:
+            row = entry['row']
+            if row.budget_amount is not None:
+                budget += row.budget_amount
+            if row.executed_total is not None:
+                executed += row.executed_total
+            if row.remaining_amount is not None:
+                remaining += row.remaining_amount
+            if row.year_executed is not None:
+                year_executed += row.year_executed
+        return {
+            'count': len(entries),
+            'budget': budget,
+            'executed': executed,
+            'remaining': remaining,
+            'year_executed': year_executed,
+            'rate': (executed / budget * Decimal('100')) if budget else None,
+        }
+
+    risk_rows = [
+        entry for entry in active_rows
+        if (entry['row'].remaining_amount is not None and entry['row'].remaining_amount < 0)
+        or (entry['row'].year_disposable is not None and entry['row'].year_disposable < 0)
+        or (entry['row'].execution_rate is not None and entry['row'].execution_rate >= SPECIAL_LEDGER_HIGH_RATE)
+    ]
+    growth_rows = [
+        entry for entry in active_rows
+        if entry['increase'] is not None and entry['increase'] > 0
+    ]
+
+    ignored_rows = []
+    for candidate, import_log in imports.items():
+        for unmatched in import_log.ignored_detail or []:
+            unmatched = dict(unmatched)
+            unmatched['ledger_type_label'] = import_log.get_ledger_type_display()
+            unmatched['executed_amount'] = _decimal_or_none(unmatched.get('executed_total'))
+            ignored_rows.append(unmatched)
+    ignored_rows.sort(key=lambda item: -(item['executed_amount'] or Decimal('0')))
+
+    context = {
+        'imports': imports,
+        'ledger_type': ledger_type,
+        'ledger_type_options': SpecialLedgerImport.LEDGER_TYPE_CHOICES,
+        'active_rows': active_rows,
+        'closed_rows': closed_rows,
+        'pending_rows': pending_rows,
+        'risk_rows': risk_rows,
+        'growth_rows': growth_rows,
+        'ignored_rows': ignored_rows,
+        'active_summary': summarize(active_rows),
+        'closed_summary': summarize(closed_rows),
+        'is_system_admin': is_system_admin(request.user),
+        'unit_label': EXPENSE_UNIT_LABEL,
+        'active_statuses': SPECIAL_LEDGER_ACTIVE_STATUSES,
+        'high_rate': SPECIAL_LEDGER_HIGH_RATE,
+    }
+    return render(request, 'core/special_expense_monitor.html', context)
+
+
+@require_POST
+def special_ledger_import_view(request):
+    ledger_type = str(request.POST.get('ledger_type', '')).strip()
+    if ledger_type not in dict(SpecialLedgerImport.LEDGER_TYPE_CHOICES):
+        messages.error(request, '请选择正确的台账类别。')
+        return redirect('special_expense_monitor')
+
+    upload = request.FILES.get('ledger_file')
+    if not upload:
+        messages.error(request, '请选择要上传的台账文件。')
+        return redirect('special_expense_monitor')
+    if Path(upload.name).suffix.lower() not in {'.xlsx', '.xlsm'}:
+        messages.error(request, '专项经费台账仅支持 .xlsx 文件。')
+        return redirect('special_expense_monitor')
+
+    store_path = _special_ledger_store_path(ledger_type, upload.name)
+    temporary_path = None
+    try:
+        store_path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary_name = tempfile.mkstemp(prefix='.special-ledger-', suffix='.xlsx', dir=str(store_path.parent))
+        os.close(fd)
+        temporary_path = Path(temporary_name)
+        with temporary_path.open('wb') as handle:
+            for chunk in upload.chunks():
+                handle.write(chunk)
+
+        result = parse_special_ledger(
+            temporary_path,
+            ledger_type,
+            projects=list(Project.objects.all()),
+            assignment_lookup=_special_ledger_assignment_lookup(),
+        )
+        file_hash = file_sha256(temporary_path)
+        file_mtime = datetime.fromtimestamp(
+            temporary_path.stat().st_mtime,
+            tz=timezone.get_current_timezone(),
+        )
+        os.replace(temporary_path, store_path)
+        temporary_path = None
+
+        with transaction.atomic():
+            import_log, created = SpecialLedgerImport.objects.get_or_create(
+                ledger_type=ledger_type,
+                file_sha256=file_hash,
+                defaults={
+                    'source_file': str(store_path),
+                    'original_filename': Path(upload.name).name[:255],
+                    'sheet_name': result['sheet_name'],
+                    'row_total': result['row_total'],
+                    'matched_total': result['matched_total'],
+                    'ambiguous_total': result['ambiguous_total'],
+                    'ignored_total': result['ignored_total'],
+                    'totals': {key: str(value) for key, value in result['totals'].items() if value is not None},
+                    'ignored_detail': [
+                        {
+                            'ledger_name': item['ledger_name'],
+                            'ledger_status': item['ledger_status'],
+                            'funder': item['funder'],
+                            'executed_total': str(item['executed_total']) if item['executed_total'] is not None else None,
+                            'reason': item['reason'],
+                        }
+                        for item in result['ignored_rows']
+                    ],
+                    'file_mtime': file_mtime,
+                    'created_by': request.user if request.user.is_authenticated else None,
+                },
+            )
+            if created:
+                rows = [
+                    SpecialLedgerRow(
+                        import_log=import_log,
+                        ledger_type=ledger_type,
+                        row_number=record['row_number'],
+                        sequence=record['sequence'][:50],
+                        project=record['project'],
+                        ledger_name=record['ledger_name'][:255],
+                        owning_unit=record['owning_unit'][:100],
+                        funder=record['funder'][:100],
+                        ledger_status=record['ledger_status'][:50],
+                        principal=record['principal'][:50],
+                        start_text=record['start_text'][:50],
+                        end_text=record['end_text'][:50],
+                        match_state=record['match_state'],
+                        **{
+                            field_name: record.get(field_name)
+                            for field_name in (
+                                'contract_total', 'contract_allocated', 'received_amount', 'approved_budget',
+                                'executed_total', 'remaining_amount', 'year_disposable', 'year_budget', 'year_executed',
+                            )
+                        },
+                    )
+                    for record in result['records']
+                ]
+                SpecialLedgerRow.objects.bulk_create(rows)
+
+        if created:
+            messages.success(
+                request,
+                f'{import_log.get_ledger_type_display()}台账已导入：关联 {result["matched_total"]} 个系统课题，'
+                f'{result["ambiguous_total"]} 个重名待确认，忽略 {result["ignored_total"]} 个系统外课题。',
+            )
+        else:
+            messages.info(request, '该台账文件此前已导入，展示的还是同一批数据。')
+    except SpecialLedgerError as exc:
+        messages.error(request, f'导入未生效：{exc}')
+    except Exception as exc:
+        messages.error(request, f'导入失败：{exc}')
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            try:
+                temporary_path.unlink()
+            except OSError:
+                pass
+    return redirect('special_expense_monitor')
+
+
+@require_POST
+def special_ledger_assign_view(request):
+    ledger_type = str(request.POST.get('ledger_type', '')).strip()
+    ledger_name = str(request.POST.get('ledger_name', '')).strip()
+    project_id = str(request.POST.get('project_id', '')).strip()
+    if ledger_type not in dict(SpecialLedgerImport.LEDGER_TYPE_CHOICES) or not ledger_name or not project_id:
+        messages.error(request, '请选择台账类别并指定对应课题。')
+        return redirect('special_expense_monitor')
+
+    project = Project.objects.filter(project_id=project_id).first()
+    if project is None:
+        messages.error(request, f'系统里没有课题编号为 {project_id} 的课题，请核对后再提交。')
+        return redirect('special_expense_monitor')
+
+    normalized_name = normalize_project_name(ledger_name)
+    SpecialLedgerAssignment.objects.update_or_create(
+        ledger_type=ledger_type,
+        normalized_name=normalized_name,
+        defaults={
+            'project': project,
+            'ledger_name': ledger_name[:255],
+            'created_by': request.user if request.user.is_authenticated else None,
+        },
+    )
+    latest = SpecialLedgerImport.objects.filter(ledger_type=ledger_type).order_by('-created_at').first()
+    if latest is not None:
+        latest.rows.filter(ledger_name=ledger_name).update(project=project, match_state='manual')
+    messages.success(request, f'已将台账课题“{ledger_name}”对应到：{project.name}')
+    return redirect('special_expense_monitor')
 
 
 def delete_project_view(request, project_id):
@@ -1682,58 +2077,22 @@ def project_detail_view(request, project_id):
     # 确保项目目录存在并获取文件树
     file_tree = []
     try:
-        # 检查项目目录路径是否需要更新（确保与状态、年份、名称同步）
-        expected_folder_name = _get_project_folder_name(project)
-        expected_path = os.path.join(str(settings.PROJECTS_ROOT), expected_folder_name)
-        
-        # 如果目录路径与期望不符，需要更新
+        # 目录路径由 _get_project_folder_name 唯一决定；此处只做一次纠偏与补建，
+        # 不再按编号子串猜测旧目录（会误改他人目录），改名统一走 create_project_directory_structure。
+        expected_path = os.path.join(str(settings.PROJECTS_ROOT), _get_project_folder_name(project))
         if project.directory_path != expected_path:
-            print(f"项目目录路径需要更新: {project.project_id}")  # 调试信息
-            
-            # 查找是否有旧目录需要重命名
-            projects_root = str(settings.PROJECTS_ROOT)
-            if os.path.exists(projects_root):
-                for item in os.listdir(projects_root):
-                    item_path = os.path.join(projects_root, item)
-                    if (os.path.isdir(item_path) and 
-                        item != expected_folder_name and 
-                        project.project_id in item):
-                        # 重命名旧目录
-                        if not os.path.exists(expected_path):
-                            os.rename(item_path, expected_path)
-                            messages.info(request, f"项目目录已重命名以匹配当前状态")
-                        break
-            
-            # 更新数据库中的路径
             project.directory_path = expected_path
             project.save(update_fields=['directory_path'])
-        
-        # 如果目录路径不存在或目录不存在，创建目录结构
-        if not project.directory_path or not os.path.exists(project.directory_path):
-            print(f"项目目录不存在，创建目录结构: {project.project_id}")  # 调试信息
-            messages.info(request, f"正在为项目 {project.name} 创建标准目录结构...")
+
+        if not os.path.isdir(expected_path):
             create_project_directory_structure(project)
-            # 重新获取项目实例以确保directory_path是最新的
             project.refresh_from_db()
-        
-        # 获取文件树
-        if project.directory_path and os.path.exists(project.directory_path):
-            # 确保子目录结构最新（包含目录重命名）
-            create_project_directory_structure(project)
-            file_tree = get_directory_level(project.directory_path, project.directory_path)
-            
-            if not file_tree:
-                print(f"文件树为空，目录可能没有内容")  # 调试信息
-                messages.info(request, "项目目录结构已创建，但暂无文件。您可以通过右侧文件操作面板上传文件。")
-            
-        else:
-            print(f"无法获取文件树，目录路径: {project.directory_path}")  # 调试信息
-            messages.warning(request, f"无法访问项目目录：{project.directory_path}")
-            
+
+        file_tree = get_directory_level(expected_path, expected_path)
+        if not file_tree:
+            messages.info(request, "项目目录结构已创建，但暂无文件。您可以通过右侧文件操作面板上传文件。")
+
     except Exception as e:
-        print(f"处理项目目录时出错: {e}")  # 调试信息
-        import traceback
-        print(f"详细错误信息: {traceback.format_exc()}")  # 详细错误信息
         messages.error(request, f"处理项目目录时出错: {e}")
 
     # Calculate relative path for file uploads
@@ -1834,12 +2193,8 @@ def file_manager_trial_view(request, project_id):
         messages.warning(request, 'Web 文件管理试用功能当前已关闭。')
         return redirect('project_detail', project_id=project_id)
 
-    if not project.directory_path or not os.path.isdir(project.directory_path):
-        create_project_directory_structure(project)
-        project.refresh_from_db()
-
-    if project.directory_path and os.path.exists(project.directory_path):
-        create_project_directory_structure(project)
+    create_project_directory_structure(project)
+    project.refresh_from_db()
 
     return render(request, 'core/file_manager_trial.html', {
         'project': project,
@@ -1891,23 +2246,10 @@ def file_action_view(request, project_id, action):
     project_root = project.directory_path
 
     if action == 'upload' and request.method == 'POST':
-        print(f"[DEBUG] 文件上传请求 - 项目ID: {project_id}")
-        print(f"[DEBUG] 是否AJAX请求: {is_ajax}")
-        print(f"[DEBUG] POST数据: {dict(request.POST)}")
-        print(f"[DEBUG] FILES数据: {list(request.FILES.keys())}")
-        print(f"[DEBUG] request.FILES内容: {dict(request.FILES)}")
-        
         uploaded_files = request.FILES.getlist('files')
-        print(f"[DEBUG] getlist('files')结果: {uploaded_files}")
         target_path_rel = request.POST.get('target_path', '')
-        
-        print(f"[DEBUG] 上传文件数量: {len(uploaded_files)}")
-        print(f"[DEBUG] 文件列表详情: {[f.name for f in uploaded_files]}")
-        print(f"[DEBUG] 文件大小详情: {[f.size for f in uploaded_files]}")
-        print(f"[DEBUG] 目标路径: {target_path_rel}")
-        
+
         if not uploaded_files:
-            print(f"[DEBUG] 没有找到上传文件")
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '请选择要上传的文件。'})
             messages.error(request, "请选择要上传的文件。")
@@ -1927,39 +2269,39 @@ def file_action_view(request, project_id, action):
         
         success_count = 0
         error_messages = []
+        renamed = []
         
         for uploaded_file in uploaded_files:
             try:
-                print(f"[DEBUG] 处理文件: {uploaded_file.name}, 大小: {uploaded_file.size}")
                 # 清理文件名，移除危险字符，但保留中文字符
                 safe_filename = re.sub(r'[\\/*?"<>|:]', '_', uploaded_file.name)
                 # 确保文件名不为空且不以点开头
                 if not safe_filename or safe_filename.startswith('.'):
                     safe_filename = f"file_{int(time.time())}{os.path.splitext(uploaded_file.name)[1]}"
-                file_path = os.path.join(target_path_abs, safe_filename)
-                print(f"[DEBUG] 保存到: {file_path}")
-                
-                with open(file_path, 'wb+') as destination:
+                file_path = _unique_upload_path(target_path_abs, safe_filename)
+
+                # 'xb' 独占创建：并发上传撞上同名时直接报错，而不是静默覆盖
+                with open(file_path, 'xb') as destination:
                     for chunk in uploaded_file.chunks():
                         destination.write(chunk)
-                print(f"[DEBUG] 文件保存成功: {safe_filename}")
+                if os.path.basename(file_path) != safe_filename:
+                    renamed.append(f"{uploaded_file.name} → {os.path.basename(file_path)}")
                 success_count += 1
             except Exception as e:
-                print(f"[DEBUG] 文件保存失败: {uploaded_file.name}, 错误: {str(e)}")
                 error_messages.append(f"{uploaded_file.name}: {str(e)}")
         
         if success_count > 0:
             success_message = f"成功上传 {success_count} 个文件。"
+            if renamed:
+                success_message += f" 同名文件已另存为: {'; '.join(renamed)}"
             if error_messages:
                 success_message += f" 失败: {'; '.join(error_messages)}"
-            
-            print(f"[DEBUG] 上传成功: {success_message}")
+
             if is_ajax:
                 return JsonResponse({'success': True, 'message': success_message})
             messages.success(request, success_message)
         else:
             error_message = f"文件上传失败: {'; '.join(error_messages)}"
-            print(f"[DEBUG] 上传失败: {error_message}")
             if is_ajax:
                 return JsonResponse({'success': False, 'message': error_message})
             messages.error(request, error_message)
@@ -1967,13 +2309,12 @@ def file_action_view(request, project_id, action):
     elif action == 'delete':
         item_path_rel = request.POST.get('path') or request.GET.get('path')
         if item_path_rel:
-            item_path_abs = _build_abs_path(project_root, item_path_rel)
-            item_path_abs = os.path.normpath(item_path_abs)
-            
-            if not _is_within_root(item_path_abs, project_root):
+            item_path_abs = _resolve_within_root(project_root, item_path_rel)
+
+            if item_path_abs is None:
                 if is_ajax:
-                    return JsonResponse({'success': False, 'message': '无效的文件路径。'})
-                messages.error(request, "无效的文件路径。")
+                    return JsonResponse({'success': False, 'message': '无效的文件路径：只能删除课题目录内的文件或文件夹。'})
+                messages.error(request, "无效的文件路径：只能删除课题目录内的文件或文件夹。")
                 return redirect('project_detail', project_id=project.project_id)
                 
             if os.path.exists(item_path_abs):
@@ -2019,12 +2360,11 @@ def file_action_view(request, project_id, action):
             messages.error(request, "新名称不合法。")
             return redirect('project_detail', project_id=project.project_id)
 
-        item_path_abs = _build_abs_path(project_root, item_path_rel)
-        item_path_abs = os.path.normpath(item_path_abs)
-        if not _is_within_root(item_path_abs, project_root):
+        item_path_abs = _resolve_within_root(project_root, item_path_rel)
+        if item_path_abs is None:
             if is_ajax:
-                return JsonResponse({'success': False, 'message': '无效的目标路径。'})
-            messages.error(request, "无效的目标路径。")
+                return JsonResponse({'success': False, 'message': '无效的目标路径：只能重命名课题目录内的文件或文件夹。'})
+            messages.error(request, "无效的目标路径：只能重命名课题目录内的文件或文件夹。")
             return redirect('project_detail', project_id=project.project_id)
 
         if not os.path.exists(item_path_abs):
@@ -2461,6 +2801,20 @@ def delete_metric_evidence_view(request, project_id, item_id, evidence_id):
     return _metrics_redirect(project_id)
 
 
+def funding_category_from_value(value):
+    """接受经费管理类别的代码或中文显示值（导出文件即使用显示值）。"""
+    text = force_str(value if value is not None else '').strip()
+    if not text:
+        return None
+    choices = dict(Project.FUNDING_CATEGORY_CHOICES)
+    if text in choices:
+        return text
+    for code, label in Project.FUNDING_CATEGORY_CHOICES:
+        if text == label:
+            return code
+    return None
+
+
 def import_from_excel_view(request):
     category_hint = _valid_funding_category(request.POST.get('funding_category') or request.GET.get('funding_category'))
     if request.method == 'POST':
@@ -2472,8 +2826,9 @@ def import_from_excel_view(request):
         try:
             workbook = openpyxl.load_workbook(excel_file)
             sheet = workbook.active
+            budget_fields = budget_header_map()
             header = [cell.value for cell in sheet[1]]
-            print(f"Excel表头: {header}")  # 调试信息
+            # 规范名取自 Project.verbose_name，历史总表的全称写法走别名表。
             field_mapping = {
                 '序号': None,  # 跳过序号列
                 '课题编号': 'project_id', '课题名称': 'name', '课题归属': 'ownership',
@@ -2482,10 +2837,13 @@ def import_from_excel_view(request):
                 '参与角色': 'role', '开始年份': 'start_year', '课题状态': 'status',
                 '课题联系人': 'contact_person', '课题负责人': 'project_lead', '开始日期': 'start_date',
                 '计划结束日期': 'planned_end_date', '延期时间': 'extension_date', '实际结题时间': 'actual_completion_date',
-                '总预算': 'total_budget', '外部专项经费': 'external_funding',
-                '院自筹经费': 'institute_funding', '所属单位自筹经费': 'unit_funding',
                 '主要研究内容': 'research_content', '备注': 'remarks',
             }
+            # 表头里出现过的经费列（含历史名称）动态并入映射。
+            for raw_header in header:
+                key = normalize_excel_header(raw_header)
+                if key and key not in field_mapping and key in budget_fields:
+                    field_mapping[key] = budget_fields[key]
 
             processed_count = 0
             created_count = 0
@@ -2493,84 +2851,79 @@ def import_from_excel_view(request):
             skipped_count = 0
             auto_filled_count = 0
             for row in sheet.iter_rows(min_row=2, values_only=True):
-                project_data = dict(zip(header, row))
-                print(f"处理行数据: {project_data}")  # 调试信息
+                row_data = dict(zip((normalize_excel_header(cell) for cell in header), row))
                 model_data = {}
                 for header_name, model_field in field_mapping.items():
                     if model_field is None:  # 跳过不需要的字段（如序号）
                         continue
-                    if header_name in project_data and project_data[header_name] is not None:
-                        value = project_data[header_name]
-                        
-                        # 处理日期字段
-                        if model_field in ['start_date', 'planned_end_date', 'extension_date', 'actual_completion_date']:
-                            if isinstance(value, str) and value.strip():
+                    source_key = normalize_excel_header(header_name)
+                    if source_key not in row_data or row_data[source_key] is None:
+                        continue
+                    value = row_data[source_key]
+
+                    # 处理日期字段
+                    if model_field in ['start_date', 'planned_end_date', 'extension_date', 'actual_completion_date']:
+                        if isinstance(value, str) and value.strip():
+                            for date_format in ['%Y-%m-%d', '%Y/%m/%d', '%Y.%m.%d', '%Y年%m月%d日']:
                                 try:
-                                    from datetime import datetime
-                                    # 尝试多种日期格式
-                                    for date_format in ['%Y-%m-%d', '%Y/%m/%d', '%Y.%m.%d', '%Y年%m月%d日']:
-                                        try:
-                                            model_data[model_field] = datetime.strptime(value.strip(), date_format).date()
-                                            break
-                                        except ValueError:
-                                            continue
-                                    else:
-                                        # 如果所有格式都失败，跳过这个字段
-                                        continue
-                                except Exception:
+                                    model_data[model_field] = datetime.strptime(value.strip(), date_format).date()
+                                    break
+                                except ValueError:
                                     continue
-                            elif hasattr(value, 'date'):  # Excel日期对象
-                                try:
-                                    model_data[model_field] = value.date()
-                                except Exception:
-                                    continue
-                        
-                        # 归并历史状态，并拒绝五项之外的状态
-                        elif model_field == 'status':
-                            normalized_status = Project.normalize_status(value)
-                            if not normalized_status:
+                        elif hasattr(value, 'date'):  # Excel日期对象
+                            try:
+                                model_data[model_field] = value.date()
+                            except Exception:
                                 continue
-                            model_data[model_field] = normalized_status
 
-                        # 处理预算字段
-                        elif model_field in ['total_budget', 'external_funding', 'institute_funding', 'unit_funding']:
-                            if isinstance(value, (int, float)) and value > 0:
-                                model_data[model_field] = value
-                            elif isinstance(value, str) and value.strip():
-                                try:
-                                    # 移除可能的货币符号和空格
-                                    clean_value = value.strip().replace('万元', '').replace('万', '').replace('元', '').replace(',', '').replace('，', '')
-                                    if clean_value:
-                                        model_data[model_field] = float(clean_value)
-                                except (ValueError, TypeError):
-                                    continue
+                    # 归并历史状态，并拒绝五项之外的状态
+                    elif model_field == 'status':
+                        normalized_status = Project.normalize_status(value)
+                        if not normalized_status:
+                            continue
+                        model_data[model_field] = normalized_status
 
-                        # 处理开始年份
-                        elif model_field == 'start_year':
-                            if isinstance(value, (int, float)):
-                                try:
-                                    model_data[model_field] = int(value)
-                                except (ValueError, TypeError):
-                                    continue
-                            elif isinstance(value, str) and value.strip():
-                                match = re.search(r'\d{4}', value.strip())
-                                if match:
-                                    model_data[model_field] = int(match.group())
-                                else:
-                                    continue
-                        
-                        # 处理其他字段
-                        else:
-                            model_data[model_field] = value.strip() if isinstance(value, str) else value
+                    # 经费管理类别同时接受代码与中文显示值
+                    elif model_field == 'funding_category':
+                        category_value = funding_category_from_value(value)
+                        if category_value:
+                            model_data[model_field] = category_value
+
+                    # 处理预算字段
+                    elif model_field in BUDGET_FIELDS:
+                        if isinstance(value, (int, float, Decimal)) and value > 0:
+                            model_data[model_field] = value
+                        elif isinstance(value, str) and value.strip():
+                            # 移除可能的货币符号和单位
+                            clean_value = re.sub(r'[，,]|单位[：:]?|万元|万|元', '', value).strip()
+                            try:
+                                if clean_value:
+                                    model_data[model_field] = Decimal(clean_value)
+                            except InvalidOperation:
+                                continue
+
+                    # 处理开始年份
+                    elif model_field == 'start_year':
+                        if isinstance(value, (int, float)):
+                            try:
+                                model_data[model_field] = int(value)
+                            except (ValueError, TypeError):
+                                continue
+                        elif isinstance(value, str) and value.strip():
+                            match = re.search(r'\d{4}', value.strip())
+                            if match:
+                                model_data[model_field] = int(match.group())
+
+                    # 处理其他字段
+                    else:
+                        model_data[model_field] = value.strip() if isinstance(value, str) else value
 
                 project_id = model_data.get('project_id')
                 if not project_id:
-                    print(f"跳过空项目ID的行")
                     skipped_count += 1
                     continue
 
-                explicit_category = model_data.get('funding_category')
-                if explicit_category not in {'special', 'self_funded'}:
+                if model_data.get('funding_category') not in {'special', 'self_funded'}:
                     model_data['funding_category'] = (
                         'self_funded' if model_data.get('project_type') == '全自筹课题' else category_hint
                     )

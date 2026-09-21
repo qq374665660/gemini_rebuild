@@ -2099,6 +2099,7 @@
         const CLIENT_PROTOCOL_SETUP_REG_PATH = "{{ client_setup_reg_path|default:''|escapejs }}";
         const IS_SYSTEM_ADMIN = {{ is_system_admin|yesno:"true,false" }};
         const CAN_DOWNLOAD_FILES = {{ can_download_files|yesno:"true,false" }};
+        const PROJECT_ID = "{{ project.project_id|escapejs }}";
 
         function openTab(evt, tabName) {
             document.querySelectorAll('.tab-content').forEach(panel => {
@@ -2299,9 +2300,17 @@
                 .replace(/>/g, '&gt;');
         }
 
+        const escapeHtmlText = escapeAttribute;
+
         function buildNodeHTML(node) {
             const isFolder = node.type === 'folder';
             const hasChildren = isFolder && Boolean(node.has_children);
+            const nodePath = escapeHtmlText(node.path);
+            const nodeName = escapeHtmlText(node.name);
+            const actionUrl = `/project/${encodeURIComponent(PROJECT_ID)}/file/`;
+            const encodedFolder = encodeURIComponent(node.path);
+            // 与 file_tree_node.html 保持一致：01~06 标准目录不允许删除
+            const isStandardFolder = /^(0[1-6])/.test(node.name);
             
             let html = '<li>';
             
@@ -2312,35 +2321,37 @@
                             ${hasChildren ? '+' : ''}
                         </span>
                         <span class="folder-icon"><i class="fas fa-folder"></i></span>
-                        <span class="folder-name"><strong>${node.name}</strong></span>
+                        <span class="folder-name"><strong>${nodeName}</strong></span>
                         ${hasChildren ? `<span class="lazy-folder-path" data-path="${escapeAttribute(node.path)}" hidden></span>` : ''}
                         <span class="folder-stats">
                             ${(node.file_count > 0 || node.folder_count > 0) ? `(${node.file_count || 0} files, ${node.folder_count || 0} folders)` : ''}
                         </span>
                         ${IS_SYSTEM_ADMIN ? `<div class="actions">
-                            <a href="#" onclick="setUploadTarget('${node.path}', '${node.name}'); return false;" title="上传文件到此文件夹">上传</a>
-                            <a href="#" onclick="setUploadTarget('${node.path}', '${node.name}'); return false;" title="在此文件夹中创建子文件夹">新建</a>
+                            <a href="#" class="set-upload-target" data-path="${nodePath}" data-name="${nodeName}" title="上传文件到此文件夹">上传</a>
+                            <a href="#" class="set-upload-target" data-path="${nodePath}" data-name="${nodeName}" title="在此文件夹中创建子文件夹">新建</a>
+                            ${isStandardFolder ? '' : `<a href="${actionUrl}delete/?path=${encodedFolder}" class="delete" onclick="return confirm('确定要删除整个文件夹及其所有内容吗？');" title="删除文件夹">删除</a>`}
                         </div>` : ''}
                     </div>
                 `;
                 
             } else {
-                const fileSize = node.size || '未知大小';
-                const modTime = node.modified_time || '';
+                const fileSize = escapeHtmlText(node.size || '未知大小');
+                const modTime = escapeHtmlText(node.modified_time || '');
                 const sizeAndTime = modTime ? `${fileSize}, ${modTime}` : fileSize;
+                const encodedPath = encodeURIComponent(node.path);
                 
                 html += `
                     <div class="tree-node">
                         <span class="file-spacer"></span>
                         <span class="file-icon"><i class="fas fa-file"></i></span>
-                        <span class="file-name">${node.name}</span>
+                        <span class="file-name">${nodeName}</span>
                         <span class="file-size">
                             (${sizeAndTime})
                         </span>
                         <div class="actions">
-                            <a href="/project/${window.location.pathname.split('/')[2]}/file/preview/?path=${encodeURIComponent(node.path)}" target="_blank" title="预览文件">预览</a>
-                            ${CAN_DOWNLOAD_FILES ? `<a href="/project/${window.location.pathname.split('/')[2]}/file/download/?path=${encodeURIComponent(node.path)}" title="下载文件">下载</a>` : ''}
-                            ${IS_SYSTEM_ADMIN ? `<a href="/project/${window.location.pathname.split('/')[2]}/file/delete/?path=${encodeURIComponent(node.path)}" class="delete" onclick="return confirm('确定要删除这个文件吗？');" title="删除文件">删除</a>` : ''}
+                            <a href="${actionUrl}preview/?path=${encodedPath}" target="_blank" rel="noopener" title="预览文件">预览</a>
+                            ${CAN_DOWNLOAD_FILES ? `<a href="${actionUrl}download/?path=${encodedPath}" title="下载文件">下载</a>` : ''}
+                            ${IS_SYSTEM_ADMIN ? `<a href="${actionUrl}delete/?path=${encodedPath}" class="delete" onclick="return confirm('确定要删除这个文件吗？');" title="删除文件">删除</a>` : ''}
                         </div>
                     </div>
                 `;
@@ -2349,15 +2360,7 @@
             html += '</li>';
             return html;
         }
-        
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-        
+                
 
         
         function getProjectFolderName(folderPath) {
@@ -3029,37 +3032,6 @@
             });
         }
         
-        // 展开指定文件夹
-        function expandFolder(folderName) {
-            const listItems = document.querySelectorAll('.file-tree li');
-            listItems.forEach(item => {
-                const folderNameElement = item.querySelector('.folder-name');
-                if (folderNameElement && folderNameElement.textContent.includes(folderName)) {
-                    const toggler = item.querySelector('.toggler');
-                    const nestedList = item.querySelector('.nested');
-                    if (toggler && nestedList && nestedList.style.display !== 'block') {
-                        nestedList.style.display = 'block';
-                        toggler.textContent = '-';
-                        
-                        // 更新文件夹图标
-                        const folderIcon = item.querySelector('.folder-icon');
-                        if (folderIcon) {
-                            folderIcon.innerHTML = '<i class="fas fa-folder-open"></i>';
-                        }
-                    }
-                }
-            });
-        }
-        
-        // 默认展开特定文件夹
-        function expandDefaultFolders() {
-            // 展开"03_过程管理"文件夹
-            expandFolder('03_过程管理');
-            // 也可以展开其他重要文件夹
-            expandFolder('01_申报');
-            expandFolder('02_立项');
-        }
-        
         // AJAX文件上传处理
         function setupAjaxFileUpload() {
             console.log('正在设置AJAX文件上传处理...');
@@ -3208,6 +3180,14 @@
 
             // 初始化文件树事件
             bindFileTreeEvents();
+            document.querySelectorAll('.file-tree').forEach(tree => {
+                tree.addEventListener('click', function(event) {
+                    const target = event.target.closest('.set-upload-target');
+                    if (!target || !tree.contains(target)) return;
+                    event.preventDefault();
+                    setUploadTarget(target.dataset.path || '', target.dataset.name || '');
+                });
+            });
             
             // 文件夹默认收起，展开时按需加载，不在首屏递归扫描。
             

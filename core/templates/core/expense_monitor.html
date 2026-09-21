@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ funding_category_label }}支出监控 - 科研课题管理系统</title>
+    <title>归集经费监控 · {{ funding_category_label }} - 科研课题管理系统</title>
     <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
     <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=3.0">
     <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
@@ -22,7 +22,7 @@
                     <div class="container">
                         <div class="page-header-content">
                             <div>
-                                <h1 class="page-title"><i class="fas fa-coins"></i> {{ funding_category_label }}支出监控</h1>
+                                <h1 class="page-title"><i class="fas fa-coins"></i> 归集经费监控 · {{ funding_category_label }}</h1>
                                 <p class="page-subtitle">
                                     {% if analysis_ready %}当前文件：{{ source_file_name }} · 工作表：{{ sheet_name }} · 口径：总账科目{{ account_label }} / {{ amount_column_label }}{% else %}上传混合月度支出明细后，系统将按课题类别自动分流{% endif %}
                                 </p>
@@ -45,7 +45,7 @@
                         <div class="content-section expense-upload-panel">
                             <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-file-arrow-up"></i> 上传本月累计支出表</h3></div>
                             <div class="content-section-body">
-                                <p class="expense-help-text">上传一个混合 .xlsx 文件即可。系统只纳入总账科目等于6606的总账记录，读取“利润中心名称”“科研课题文本描述”和“本年累计借方金额”，并在匹配课题后按经费管理类别自动分流；未匹配明细仍保留在公共未匹配区。</p>
+                                <p class="expense-help-text">上传一个混合 .xlsx 文件即可。系统只纳入总账科目等于6606的总账记录，读取“利润中心名称”“科研课题文本描述”，以及“期初金额”“本年累计借方金额”“本年累计贷方金额”三列算出立项以来累计支出，并在匹配课题后按经费管理类别自动分流；未匹配明细仍保留在公共未匹配区。</p>
                                 {% if is_system_admin %}
                                     <form method="post" action="{% url 'expense_import' %}" enctype="multipart/form-data" class="expense-upload-form">
                                         {% csrf_token %}
@@ -65,10 +65,17 @@
 
                         {% if analysis_ready %}
                             <div class="stats-grid">
-                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-filter"></i></div><div class="stat-card-value">{{ filtered_rows }}</div><div class="stat-card-label">6606明细记录</div></div>
-                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-diagram-project"></i></div><div class="stat-card-value">{{ matched_project_total }}</div><div class="stat-card-label">已匹配系统课题</div></div>
-                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-scale-balanced"></i></div><div class="stat-card-value">{{ total_expense_sum|floatformat:4 }}</div><div class="stat-card-label">6606累计支出合计({{ expense_unit_label }})</div></div>
-                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-triangle-exclamation"></i></div><div class="stat-card-value">{{ over_budget_total }}</div><div class="stat-card-label">超预算课题</div></div>
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-filter"></i></div><div class="stat-card-value">{{ filtered_rows }}</div><div class="stat-card-label">6606明细记录（整表）</div></div>
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-diagram-project"></i></div><div class="stat-card-value">{{ matched_project_total }}</div><div class="stat-card-label">{{ funding_category_label }}已匹配课题</div></div>
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-scale-balanced"></i></div><div class="stat-card-value">{{ total_expense_sum|floatformat:4 }}</div><div class="stat-card-label">整表{{ account_label }}累计支出({{ expense_unit_label }})</div></div>
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-coins"></i></div><div class="stat-card-value">{{ scoped_expense_total|floatformat:4 }}</div><div class="stat-card-label">{{ funding_category_label }}已匹配支出({{ expense_unit_label }})</div></div>
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-triangle-exclamation"></i></div><div class="stat-card-value">{{ over_budget_total }}</div><div class="stat-card-label">累计支出超出总预算</div></div>
+                            </div>
+
+                            <div class="alert alert-info">
+                                累计支出取“{{ amount_column_label }}”。6606 科目年末不清转，该式恒等于带符号期末余额，因此<strong>无论导出的日期区间是否跨年，读出的都是课题立项以来的累计支出</strong>，可直接与总预算比较；单独使用“本年累计借方金额”会在跨区间的导出上少算往年支出。
+                                该口径已与《19-26 研发费用期末余额》逐课题核对，共有课题金额完全一致。
+                                整表 {{ total_rows }} 条6606记录中已归并 {{ global_matched_project_total }} 个课题，剩余 {{ unmatched_total }} 组描述（{{ unmatched_amount|floatformat:2 }} {{ expense_unit_label }}）待人工映射。
                             </div>
 
                             <div class="content-section">
@@ -78,8 +85,9 @@
                                         {% for company in company_summaries %}
                                             <article class="expense-company-summary-card">
                                                 <h4>{{ company.company }}</h4>
-                                                <div class="expense-company-total">{{ company.total|floatformat:4 }} <small>{{ expense_unit_label }}</small></div>
-                                                <div class="expense-company-detail"><span>6606记录 {{ company.row_count }} 条</span><span>已匹配 {{ company.matched_total|floatformat:4 }}</span><span class="{% if company.unmatched_total %}text-warning{% endif %}">未匹配 {{ company.unmatched_total|floatformat:4 }}</span></div>
+                                                <div class="expense-company-total">{{ company.scoped_matched_total|floatformat:4 }} <small>{{ expense_unit_label }}</small></div>
+                                                <div class="expense-company-label">{{ funding_category_label }}已匹配支出</div>
+                                                <div class="expense-company-detail"><span>整表6606 {{ company.total|floatformat:4 }}（{{ company.row_count }} 条）</span><span>整表未匹配 <span class="{% if company.unmatched_total %}text-warning{% endif %}">{{ company.unmatched_total|floatformat:4 }}</span></span></div>
                                             </article>
                                         {% endfor %}
                                     </div>
@@ -101,12 +109,12 @@
                             </div>
 
                             <div class="content-section">
-                                <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-triangle-exclamation"></i> 超预算提示 ({{ over_budget_total }})</h3></div>
+                                <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-triangle-exclamation"></i> 累计支出超出总预算 ({{ over_budget_total }})</h3></div>
                                 <div class="content-section-body">
                                     {% if over_budget_alerts %}<div class="table-responsive"><table class="table expense-table">
-                                        <thead><tr><th>来源公司</th><th>课题名称</th><th>利润中心名称</th><th>总预算</th><th>累计支出</th><th>超出({{ expense_unit_label }})</th></tr></thead>
-                                        <tbody>{% for item in over_budget_alerts %}<tr class="expense-over-row"><td>{{ item.company_names }}</td><td><a href="{% url 'project_detail' item.project_id %}">{{ item.project_name }}</a></td><td><div class="expense-profit-center-list">{% for profit_center in item.profit_centers %}<span>{{ profit_center }}</span>{% empty %}-{% endfor %}</div></td><td>{{ item.budget_value|floatformat:2 }}</td><td>{{ item.total|floatformat:4 }}</td><td class="text-danger">{{ item.over_amount|floatformat:4 }}</td></tr>{% endfor %}</tbody>
-                                    </table></div>{% else %}<div class="empty-state"><i class="fas fa-check-circle"></i><p>已匹配课题中暂无超预算记录。</p></div>{% endif %}
+                                        <thead><tr><th>来源公司</th><th>课题名称</th><th>利润中心名称</th><th>总预算</th><th>累计支出</th><th>超出({{ expense_unit_label }})</th><th>匹配</th></tr></thead>
+                                        <tbody>{% for item in over_budget_alerts %}<tr class="expense-over-row"><td>{{ item.company_names }}</td><td><a href="{% url 'project_detail' item.project_id %}">{{ item.project_name }}</a></td><td><div class="expense-profit-center-list">{% for profit_center in item.profit_centers %}<span>{{ profit_center }}</span>{% empty %}-{% endfor %}</div></td><td>{{ item.budget_value|floatformat:2 }}</td><td>{{ item.total|floatformat:4 }}</td><td class="text-danger">{{ item.over_amount|floatformat:4 }}</td><td>{{ item.max_score|floatformat:2 }}{% if item.match_method == 'manual' %}（手工）{% elif item.max_score < 1 %}（模糊）{% endif %}</td></tr>{% endfor %}</tbody>
+                                    </table></div>{% else %}<div class="empty-state"><i class="fas fa-check-circle"></i><p>已匹配课题中暂无超出总预算记录。</p></div>{% endif %}
                                 </div>
                             </div>
 
@@ -132,13 +140,30 @@
                                 </div>
                             </div>
 
+                            {% if is_system_admin %}<datalist id="expense-project-options">{% for pid, pname in project_options %}<option value="{{ pid }}">{{ pname }}</option>{% endfor %}</datalist>{% endif %}
+
+                            {% if ambiguous_rows %}
+                                <div class="content-section" id="ambiguous-records">
+                                    <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-code-branch"></i> 系统重名待指定 ({{ ambiguous_total }})</h3></div>
+                                    <div class="content-section-body">
+                                        <div class="alert alert-warning">这 {{ ambiguous_total }} 组描述（合计 {{ ambiguous_amount|floatformat:2 }} {{ expense_unit_label }}）与系统里两条以上课题同名，程序无法判断钱属于哪一个，因此<strong>暂未计入任何课题的支出</strong>。请指定归属后再统计。</div>
+                                        <div class="table-responsive"><table class="table expense-table">
+                                            <thead><tr><th>课题描述</th><th>来源公司</th><th>累计支出({{ expense_unit_label }})</th><th>同名课题</th><th>指定归属</th></tr></thead>
+                                            <tbody>{% for row in ambiguous_rows %}<tr><td class="text-muted">{{ row.description }}</td><td>{{ row.company }}</td><td class="text-warning">{{ row.amount|floatformat:4 }}</td>
+                                                <td><div class="expense-profit-center-list">{% for option in row.ambiguous_options %}<span>{{ option.project_id }} {{ option.project_name }}</span>{% endfor %}</div></td>
+                                                <td>{% if is_system_admin %}<form method="post" action="{% url 'expense_mapping' %}" class="mapping-form">{% csrf_token %}<input type="hidden" name="funding_category" value="{{ funding_category }}"><input type="hidden" name="description" value="{{ row.canonical_description }}"><input type="hidden" name="threshold" value="{{ threshold }}"><div class="mapping-controls"><input name="project_id" class="form-control form-control-sm" list="expense-project-options" placeholder="输入课题编号" autocomplete="off" required><button type="submit" class="btn btn-sm btn-primary">指定</button></div></form>{% else %}-{% endif %}</td>
+                                            </tr>{% endfor %}</tbody>
+                                        </table></div>
+                                    </div>
+                                </div>
+                            {% endif %}
+
                             <div class="content-section" id="unmatched-records">
                                 <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-circle-exclamation"></i> 未匹配课题 ({{ unmatched_total }})</h3></div>
                                 <div class="content-section-body">
                                     {% if unmatched_rows %}
-                                        {% if is_system_admin %}<datalist id="expense-project-options">{% for pid, pname in project_options %}<option value="{{ pid }}">{{ pname }}</option>{% endfor %}</datalist>{% endif %}
                                         <div class="table-responsive"><table class="table expense-table">
-                                            <thead><tr><th>来源公司</th><th>课题描述（已归并）</th><th>利润中心名称</th><th>累计借方({{ expense_unit_label }})</th><th>记录/变体</th><th>最接近课题</th><th>分数</th><th>手工映射</th></tr></thead>
+                                            <thead><tr><th>来源公司</th><th>课题描述（已归并）</th><th>利润中心名称</th><th>累计支出({{ expense_unit_label }})</th><th>记录/变体</th><th>最接近课题</th><th>分数</th><th>手工映射</th></tr></thead>
                                             <tbody>{% for row in unmatched_rows %}<tr><td>{{ row.company }}</td><td class="text-muted">{{ row.description }}</td><td><div class="expense-profit-center-list">{% for profit_center in row.profit_centers %}<span>{{ profit_center }}</span>{% empty %}-{% endfor %}</div></td><td>{{ row.amount|floatformat:4 }}</td><td>{{ row.row_count }} / {{ row.variant_count }}</td><td>{{ row.best_name }}</td><td>{{ row.best_score|floatformat:2 }}</td><td>
                                                 {% if is_system_admin %}<form method="post" action="{% url 'expense_mapping' %}" class="mapping-form">{% csrf_token %}<input type="hidden" name="funding_category" value="{{ funding_category }}"><input type="hidden" name="description" value="{{ row.canonical_description }}"><input type="hidden" name="threshold" value="{{ threshold }}"><input type="hidden" name="unmatched_page" value="{{ unmatched_page_obj.number }}"><div class="mapping-controls"><input name="project_id" class="form-control form-control-sm" list="expense-project-options" placeholder="输入课题编号" autocomplete="off" required><button type="submit" class="btn btn-sm btn-primary">映射</button></div></form>{% else %}-{% endif %}
                                             </td></tr>{% endfor %}</tbody>
@@ -149,10 +174,10 @@
                             </div>
 
                             <div class="content-section">
-                                <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-minus-circle"></i> 负数累计借方提示 ({{ negative_total }})</h3></div>
+                                <div class="content-section-header"><h3 class="content-section-title"><i class="fas fa-minus-circle"></i> 负数累计支出提示 ({{ negative_total }})</h3></div>
                                 <div class="content-section-body">
-                                    {% if negative_rows %}<div class="table-responsive"><table class="table expense-table"><thead><tr><th>来源公司</th><th>课题描述</th><th>利润中心名称</th><th>本年累计借方({{ expense_unit_label }})</th></tr></thead><tbody>{% for row in negative_rows %}<tr><td>{{ row.company }}</td><td class="text-muted">{{ row.description }}</td><td>{{ row.profit_center }}</td><td class="text-danger">{{ row.amount|floatformat:4 }}</td></tr>{% endfor %}</tbody></table></div><div class="table-footnote">仅展示前200条；负数仍按原值计入公司和课题合计。</div>
-                                    {% else %}<div class="empty-state"><i class="fas fa-check"></i><p>未发现负数累计借方记录。</p></div>{% endif %}
+                                    {% if negative_rows %}<div class="table-responsive"><table class="table expense-table"><thead><tr><th>来源公司</th><th>课题描述</th><th>利润中心名称</th><th>累计支出({{ expense_unit_label }})</th></tr></thead><tbody>{% for row in negative_rows %}<tr><td>{{ row.company }}</td><td class="text-muted">{{ row.description }}</td><td>{{ row.profit_center }}</td><td class="text-danger">{{ row.amount|floatformat:4 }}</td></tr>{% endfor %}</tbody></table></div><div class="table-footnote">仅展示前200条；负数仍按原值计入公司和课题合计。</div>
+                                    {% else %}<div class="empty-state"><i class="fas fa-check"></i><p>未发现负数累计支出记录。</p></div>{% endif %}
                                 </div>
                             </div>
                         {% endif %}

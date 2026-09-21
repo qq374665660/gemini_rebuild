@@ -35,7 +35,7 @@
                 </li>
 
                 <li class="navbar-nav-item navbar-nav-group">
-                    <button type="button" class="navbar-nav-link navbar-nav-trigger{% if current == 'progress_monitor' or current == 'self_funded_progress_monitor' or current == 'expense_monitor' or current == 'self_funded_expense_monitor' or current == 'expense_import' or current == 'expense_mapping' %} active{% endif %}" aria-expanded="false">
+                    <button type="button" class="navbar-nav-link navbar-nav-trigger{% if current == 'progress_monitor' or current == 'self_funded_progress_monitor' or current == 'expense_monitor' or current == 'self_funded_expense_monitor' or current == 'expense_import' or current == 'expense_mapping' or current == 'special_expense_monitor' or current == 'special_ledger_import' or current == 'special_ledger_assign' %} active{% endif %}" aria-expanded="false">
                         <i class="fas fa-gauge-high"></i><span>监控中心</span><i class="fas fa-chevron-down navbar-nav-chevron"></i>
                     </button>
                     <div class="navbar-nav-dropdown">
@@ -43,9 +43,13 @@
                             <span class="navbar-dropdown-icon"><i class="fas fa-list-check"></i></span>
                             <span><strong>进度监控</strong><small>中期节点与超期风险</small></span>
                         </a>
+                        <a href="{% url 'special_expense_monitor' %}" class="navbar-dropdown-link{% if current == 'special_expense_monitor' or current == 'special_ledger_import' or current == 'special_ledger_assign' %} active{% endif %}">
+                            <span class="navbar-dropdown-icon"><i class="fas fa-sack-dollar"></i></span>
+                            <span><strong>专项经费面板</strong><small>外部专项与院专项执行</small></span>
+                        </a>
                         <a href="{% url 'expense_monitor' %}" class="navbar-dropdown-link{% if current == 'expense_monitor' or current == 'self_funded_expense_monitor' or current == 'expense_import' or current == 'expense_mapping' %} active{% endif %}">
                             <span class="navbar-dropdown-icon"><i class="fas fa-coins"></i></span>
-                            <span><strong>支出监控</strong><small>经费支出与预算预警</small></span>
+                            <span><strong>归集经费监控</strong><small>累计支出与总经费预警</small></span>
                         </a>
                     </div>
                 </li>

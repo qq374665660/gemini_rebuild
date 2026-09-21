@@ -10,11 +10,12 @@ from unittest.mock import patch
 import openpyxl
 from django.contrib.auth import get_user_model
 from django.contrib.messages.storage.fallback import FallbackStorage
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.template.loader import render_to_string
 from django.test import RequestFactory, TestCase, override_settings
-from django.urls import reverse
+from django.urls import resolve, reverse
 from django.utils import timezone
 
 from .forms import ProjectForm
@@ -28,7 +29,10 @@ from .models import (
     Project,
     ProjectAnalysis,
     ExpenseImport,
+    ExpenseMapping,
     ExpenseSnapshot,
+    SpecialLedgerImport,
+    SpecialLedgerRow,
 )
 from .views import import_from_excel_view, extract_task_docx_view, query_assistant_view
 from .docx_task_extractor import extract_task_pdf_text
@@ -51,6 +55,7 @@ from .expense_analysis import (
     canonicalize_expense_description,
     normalized_expense_description,
 )
+from .special_ledger import parse_special_ledger
 
 
 class ProjectFilterTests(TestCase):
@@ -1223,8 +1228,7 @@ class LazyFileTreeTests(TestCase):
             )
 
             with override_settings(PROJECTS_ROOT=projects_root_path):
-                with patch('core.views.get_directory_tree', side_effect=AssertionError('不应递归扫描')):
-                    detail_response = self.client.get(reverse('project_detail', args=[project.project_id]))
+                detail_response = self.client.get(reverse('project_detail', args=[project.project_id]))
                 self.assertEqual(detail_response.status_code, 200)
                 root_nodes = detail_response.context['file_tree']
                 other_node = next(node for node in root_nodes if node['name'] == '08_其他')
@@ -1841,7 +1845,9 @@ class ExpenseMonitorMonthlyLedgerTests(TestCase):
                 '总账科目',
                 '利润中心名称',
                 '科研课题文本描述',
+                '期初金额',
                 '本年累计借方金额',
+                '本年累计贷方金额',
                 '期末余额',
             ])
             for row in rows:
@@ -1856,13 +1862,17 @@ class ExpenseMonitorMonthlyLedgerTests(TestCase):
     def _write_workbook(self, rows):
         self.expense_path.write_bytes(self._workbook_bytes(rows))
 
+    @staticmethod
+    def _row(company, account, profit_center, description, debit, balance, opening=0, credit=0):
+        return [company, account, profit_center, description, opening, debit, credit, balance]
+
     def _base_rows(self, company_b_amount=70000):
         return [
-            [self.COMPANY_A, 6606, f'{self.COMPANY_A}-本部', '城市竖井关键技术研究-专项', 80000, 99999999],
-            [self.COMPANY_B, '6606', f'{self.COMPANY_B}-本部', '城市竖井关键技术研究（地下空间公司自筹）', company_b_amount, 88888888],
-            [self.COMPANY_A, 6401, f'{self.COMPANY_A}设计二院', '城市竖井关键技术研究', 999000, 77777777],
-            [self.COMPANY_A, 660601, f'{self.COMPANY_A}-本部', '城市竖井关键技术研究', 555000, 77777777],
-            [self.COMPANY_B, 6606, '天津地铁7号线项目', '尚未录入系统的课题（公司自筹）', 20000, 66666666],
+            self._row(self.COMPANY_A, 6606, f'{self.COMPANY_A}-本部', '城市竖井关键技术研究-专项', 80000, 99999999),
+            self._row(self.COMPANY_B, '6606', f'{self.COMPANY_B}-本部', '城市竖井关键技术研究（地下空间公司自筹）', company_b_amount, 88888888),
+            self._row(self.COMPANY_A, 6401, f'{self.COMPANY_A}设计二院', '城市竖井关键技术研究', 999000, 77777777),
+            self._row(self.COMPANY_A, 660601, f'{self.COMPANY_A}-本部', '城市竖井关键技术研究', 555000, 77777777),
+            self._row(self.COMPANY_B, 6606, '天津地铁7号线项目', '尚未录入系统的课题（公司自筹）', 20000, 66666666),
         ]
 
     def test_analysis_filters_6606_merges_suffixes_and_compares_budget(self):
@@ -1895,6 +1905,76 @@ class ExpenseMonitorMonthlyLedgerTests(TestCase):
         self.assertEqual(company_summary[self.COMPANY_B]['total'], Decimal('9'))
         self.assertEqual(company_summary[self.COMPANY_B]['matched_total'], Decimal('7'))
         self.assertEqual(company_summary[self.COMPANY_B]['unmatched_total'], Decimal('2'))
+
+    def test_duplicate_system_names_leave_money_unassigned(self):
+        # 系统里有两条同名课题时，程序无法判断钱属于哪一条，归错代价太大。
+        Project.objects.create(
+            project_id='EXP-002',
+            name='城市竖井关键技术研究',
+            ownership='测试单位', managing_unit='测试归口单位', level='企业级',
+            project_type='科研课题', role='牵头', start_year=2023, status='在研',
+            start_date=date(2023, 1, 1), total_budget=Decimal('50.00'),
+            directory_path='EXP-002',
+        )
+        self._write_workbook([
+            self._row(self.COMPANY_A, 6606, f'{self.COMPANY_A}-本部', '城市竖井关键技术研究', 80000, 0),
+            self._row(self.COMPANY_A, 6606, f'{self.COMPANY_A}-本部', '尚未录入系统的课题', 20000, 0),
+        ])
+
+        result = analyze_expense_workbook(self.expense_path, Project.objects.all(), threshold=0.85)
+
+        self.assertEqual(result['project_rows'], [])
+        ambiguous = [row for row in result['unmatched_rows'] if row['ambiguous_options']]
+        self.assertEqual(len(ambiguous), 1)
+        self.assertEqual(ambiguous[0]['amount'], Decimal('8'))
+        self.assertEqual(
+            [option['project_id'] for option in ambiguous[0]['ambiguous_options']],
+            ['EXP-001', 'EXP-002'],
+        )
+
+    def test_manual_mapping_resolves_duplicate_system_names(self):
+        Project.objects.create(
+            project_id='EXP-002',
+            name='城市竖井关键技术研究',
+            ownership='测试单位', managing_unit='测试归口单位', level='企业级',
+            project_type='科研课题', role='牵头', start_year=2023, status='在研',
+            start_date=date(2023, 1, 1), total_budget=Decimal('50.00'),
+            directory_path='EXP-002',
+        )
+        self._write_workbook([
+            self._row(self.COMPANY_A, 6606, f'{self.COMPANY_A}-本部', '城市竖井关键技术研究', 80000, 0),
+        ])
+        ExpenseMapping.objects.create(
+            description_text='城市竖井关键技术研究',
+            normalized_text=normalized_expense_description('城市竖井关键技术研究'),
+            project=Project.objects.get(project_id='EXP-002'),
+        )
+
+        result = analyze_expense_workbook(
+            self.expense_path, Project.objects.all(),
+            mappings=ExpenseMapping.objects.all(), threshold=0.85,
+        )
+
+        self.assertEqual([entry['project_id'] for entry in result['project_rows']], ['EXP-002'])
+        self.assertEqual(result['project_rows'][0]['match_method'], 'manual')
+
+    def test_exact_project_name_beats_containing_name(self):
+        Project.objects.create(
+            project_id='EXP-PARENT',
+            name='城市竖井关键技术研究第一阶段深化',
+            ownership='测试单位', managing_unit='测试归口单位', level='企业级',
+            project_type='科研课题', role='牵头', start_year=2023, status='在研',
+            start_date=date(2023, 1, 1), total_budget=Decimal('50.00'),
+            directory_path='EXP-PARENT',
+        )
+        self._write_workbook([
+            self._row(self.COMPANY_A, 6606, f'{self.COMPANY_A}-本部', '城市竖井关键技术研究', 80000, 0),
+        ])
+
+        result = analyze_expense_workbook(self.expense_path, Project.objects.all(), threshold=0.85)
+
+        self.assertEqual([entry['project_id'] for entry in result['project_rows']], ['EXP-001'])
+        self.assertEqual(result['project_rows'][0]['max_score'], 1.0)
 
     def test_name_normalization_only_removes_funding_suffixes(self):
         base = '城市竖井关键技术研究'
@@ -1956,12 +2036,33 @@ class ExpenseMonitorMonthlyLedgerTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '总账科目6606')
-        self.assertContains(response, '本年累计借方金额')
+        self.assertContains(response, '期初+本年累计借方-本年累计贷方')
         self.assertContains(response, '利润中心名称')
         self.assertContains(response, SHORT_COMPANY_NAME)
         self.assertContains(response, self.COMPANY_B)
         self.assertNotContains(response, self.COMPANY_A)
         self.assertNotContains(response, '归口单位分组数')
+
+    def test_lifetime_amount_ignores_export_date_range(self):
+        # 6606年末不清转，跨年导出时往年支出落在“期初金额”，单看本年累计借方就会漏掉。
+        self._write_workbook([
+            self._row(self.COMPANY_A, 6606, f'{self.COMPANY_A}-本部', '城市竖井关键技术研究',
+                      debit=20000, balance=100000, opening=80000),
+        ])
+
+        result = analyze_expense_workbook(self.expense_path, [self.project], threshold=0.85)
+
+        self.assertEqual(result['project_rows'][0]['total'], Decimal('10'))
+
+    def test_lifetime_amount_subtracts_year_credit(self):
+        self._write_workbook([
+            self._row(self.COMPANY_A, 6606, f'{self.COMPANY_A}-本部', '城市竖井关键技术研究',
+                      debit=50000, balance=30000, opening=0, credit=20000),
+        ])
+
+        result = analyze_expense_workbook(self.expense_path, [self.project], threshold=0.85)
+
+        self.assertEqual(result['project_rows'][0]['total'], Decimal('3'))
 
 
 class FundingCategoryTests(TestCase):
@@ -1988,6 +2089,119 @@ class FundingCategoryTests(TestCase):
         self.assertTrue(result['ok'])
         self.assertEqual(result['total'], 1)
         self.assertEqual(result['rows'][0]['project'].project_id, 'SELF-1')
+
+
+class ExcelBudgetHeaderTests(TestCase):
+    """经费四列以系统字段名为准，且导出的表格能原样导回系统。"""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user('excel-admin', password='StrongPass!234', is_staff=True)
+        self.client.force_login(self.user)
+        self.project = Project.objects.create(
+            project_id='EXCEL-BUDGET-1',
+            name='经费列测试课题',
+            ownership='西勘院',
+            managing_unit='测试单位',
+            level='公司级',
+            project_type='应用研究',
+            role='牵头',
+            start_year=2026,
+            status='在研',
+            funding_category='self_funded',
+            total_budget=Decimal('32.10'),
+            external_funding=Decimal('12.10'),
+            institute_funding=Decimal('10.00'),
+            unit_funding=Decimal('10.00'),
+            directory_path='EXCEL-BUDGET-1',
+        )
+
+    def test_verbose_names_match_ui_labels(self):
+        labels = [Project._meta.get_field(name).verbose_name for name in
+                  ('total_budget', 'external_funding', 'institute_funding', 'unit_funding')]
+
+        self.assertEqual(labels, ['总预算', '外部专项', '院专项', '单位自筹'])
+
+    def _upload(self, workbook=None, content=None, **post_data):
+        if content is None:
+            output = BytesIO()
+            workbook.save(output)
+            content = output.getvalue()
+        upload = SimpleUploadedFile(
+            'projects.xlsx',
+            content,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        return {'excel_file': upload, **post_data}
+
+    def test_exported_workbook_round_trips_back_into_the_system(self):
+        response = self.client.get(reverse('export_project_list'), {'funding_category': 'self_funded'})
+
+        self.assertEqual(response.status_code, 200)
+        exported = openpyxl.load_workbook(BytesIO(response.content)).active
+        headers = [cell.value for cell in exported[1]]
+        for column in ('总预算', '外部专项', '院专项', '单位自筹'):
+            self.assertIn(column, headers)
+
+        self.project.total_budget = Decimal('1.00')
+        self.project.external_funding = None
+        self.project.institute_funding = None
+        self.project.unit_funding = None
+        self.project.save()
+
+        with tempfile.TemporaryDirectory() as projects_root:
+            with override_settings(PROJECTS_ROOT=Path(projects_root)):
+                upload_response = self.client.post(
+                    reverse('import_from_excel'),
+                    self._upload(content=response.content, funding_category='self_funded'),
+                )
+
+        self.assertEqual(upload_response.status_code, 302)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.total_budget, Decimal('32.10'))
+        self.assertEqual(self.project.external_funding, Decimal('12.10'))
+        self.assertEqual(self.project.institute_funding, Decimal('10.00'))
+        self.assertEqual(self.project.unit_funding, Decimal('10.00'))
+        # 导出写的是中文显示值，导入必须还原成 self_funded 而不是退回页面默认值。
+        self.assertEqual(self.project.funding_category, 'self_funded')
+
+    def test_legacy_budget_headers_still_import(self):
+        workbook = openpyxl.Workbook()
+        worksheet = workbook.active
+        worksheet.append([
+            '课题编号', '课题名称', '课题归属', '课题级别', '课题类型', '参与角色',
+            '开始年份', '课题状态', '总预算（万元）', '外部专项经费', '院自筹经费', '所属单位自筹经费',
+        ])
+        worksheet.append([
+            'EXCEL-LEGACY-1', '历史总表课题', '西勘院', '公司级', '应用研究', '牵头',
+            2026, '在研', '120.5', '50', '30.5', '40',
+        ])
+
+        with tempfile.TemporaryDirectory() as projects_root:
+            with override_settings(PROJECTS_ROOT=Path(projects_root)):
+                response = import_from_excel_view(
+                    self._rf_request(workbook),
+                )
+
+        self.assertEqual(response.status_code, 302)
+        project = Project.objects.get(project_id='EXCEL-LEGACY-1')
+        self.assertEqual(project.total_budget, Decimal('120.50'))
+        self.assertEqual(project.external_funding, Decimal('50.00'))
+        self.assertEqual(project.institute_funding, Decimal('30.50'))
+        self.assertEqual(project.unit_funding, Decimal('40.00'))
+
+    def _rf_request(self, workbook):
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        upload = SimpleUploadedFile(
+            'legacy.xlsx',
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        request = RequestFactory().post(reverse('import_from_excel'), {'excel_file': upload})
+        request.session = {}
+        request._messages = FallbackStorage(request)
+        return request
 
 
 class ProjectIdWithSlashUrlTests(TestCase):
@@ -2035,3 +2249,491 @@ class ProjectIdWithSlashUrlTests(TestCase):
 
         self.assertEqual(detail_response.status_code, 200)
         self.assertEqual(file_tree_response.status_code, 200)
+
+
+class FileManagementRoutingTests(TestCase):
+    """文件操作路由与危险操作护栏。"""
+
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            'file-admin', password='StrongPass!234', is_staff=True
+        )
+        self.client.force_login(self.admin)
+        self.project = Project.objects.create(
+            project_id='FILE-SAFE-1',
+            name='文件安全课题',
+            ownership='西勘院',
+            managing_unit='测试单位',
+            level='公司级',
+            project_type='应用研究',
+            role='牵头',
+            start_year=2026,
+            status='在研',
+            directory_path='',
+        )
+
+    def make_tree(self, root):
+        folder = Path(root) / '2026-在研-FILE-SAFE-1-文件安全课题'
+        (folder / '01_申报').mkdir(parents=True)
+        (folder / '01_申报' / '材料.txt').write_text('原始内容', encoding='utf-8')
+        self.project.directory_path = str(folder)
+        self.project.save(update_fields=['directory_path'])
+        return folder
+
+    def test_delete_url_is_not_swallowed_by_project_delete_route(self):
+        """/project/<id>/file/delete/ 必须落到 file_action，否则删除功能整体 404。"""
+        match = resolve(f'/project/{self.project.project_id}/file/delete/')
+
+        self.assertEqual(match.url_name, 'file_action')
+        self.assertEqual(match.kwargs['action'], 'delete')
+        self.assertEqual(match.kwargs['project_id'], self.project.project_id)
+
+    def test_every_file_action_resolves_to_file_action(self):
+        for action in ('upload', 'delete', 'rename', 'download', 'preview', 'create_folder'):
+            with self.subTest(action=action):
+                match = resolve(f'/project/{self.project.project_id}/file/{action}/')
+                self.assertEqual(match.url_name, 'file_action')
+                self.assertEqual(match.kwargs['action'], action)
+
+    def test_project_delete_route_still_works(self):
+        match = resolve(f'/project/{self.project.project_id}/delete/')
+
+        self.assertEqual(match.url_name, 'delete_project')
+        self.assertEqual(match.kwargs['project_id'], self.project.project_id)
+
+    def test_deleting_project_root_is_refused(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = self.make_tree(temp_dir)
+            with override_settings(PROJECTS_ROOT=Path(temp_dir)):
+                response = self.client.post(
+                    reverse('file_action', args=[self.project.project_id, 'delete']),
+                    {'path': '.'},
+                    headers={'x-requested-with': 'XMLHttpRequest'},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(response.json()['success'])
+            self.assertTrue(folder.is_dir())
+            self.assertTrue((folder / '01_申报' / '材料.txt').is_file())
+
+    def test_delete_removes_single_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = self.make_tree(temp_dir)
+            with override_settings(PROJECTS_ROOT=Path(temp_dir)):
+                response = self.client.post(
+                    reverse('file_action', args=[self.project.project_id, 'delete']),
+                    {'path': '01_申报/材料.txt'},
+                    headers={'x-requested-with': 'XMLHttpRequest'},
+                )
+
+            self.assertTrue(response.json()['success'])
+            self.assertFalse((folder / '01_申报' / '材料.txt').exists())
+            self.assertTrue(folder.is_dir())
+
+    def test_upload_does_not_overwrite_existing_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = self.make_tree(temp_dir)
+            with override_settings(PROJECTS_ROOT=Path(temp_dir)):
+                response = self.client.post(
+                    reverse('file_action', args=[self.project.project_id, 'upload']),
+                    {'files': SimpleUploadedFile('材料.txt', b'new content'), 'target_path': '01_申报'},
+                    headers={'x-requested-with': 'XMLHttpRequest'},
+                )
+
+            self.assertTrue(response.json()['success'])
+            self.assertEqual((folder / '01_申报' / '材料.txt').read_bytes(), '原始内容'.encode('utf-8'))
+            saved = sorted(p.name for p in (folder / '01_申报').iterdir())
+            self.assertEqual(len(saved), 2)
+            self.assertNotEqual(saved[0], saved[1])
+
+    def test_tree_links_urlencode_tricky_filenames(self):
+        """文件名含空格与 # 时，?path= 链接不能被截断。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = Path(temp_dir) / '2026-在研-FILE-SAFE-1-文件安全课题'
+            folder.mkdir(parents=True)
+            # 详情页只渲染根目录一层，特殊文件名必须放在根目录才会出现在链接里
+            (folder / 'v1 #2 终稿.txt').write_text('x', encoding='utf-8')
+            self.project.directory_path = str(folder)
+            self.project.save(update_fields=['directory_path'])
+
+            with override_settings(PROJECTS_ROOT=Path(temp_dir)):
+                response = self.client.get(reverse('project_detail', args=[self.project.project_id]))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode('utf-8')
+        # 未编码的 # 会把查询串截断，空格同样会破坏链接
+        self.assertNotIn('path=v1 #2', html)
+        self.assertIn('path=v1%20%232%20%E7%BB%88%E7%A8%BF.txt', html)
+
+    def test_detail_get_does_not_rename_another_projects_folder(self):
+        """编号互为前缀时（Z-4 与 Z-48），打开详情页不得动别人的目录。"""
+        other = Project.objects.create(
+            project_id='FILE-SAFE-1-X',
+            name='文件安全课题扩展版',
+            ownership='西勘院',
+            level='公司级',
+            project_type='应用研究',
+            role='牵头',
+            start_year=2026,
+            status='在研',
+            directory_path='',
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            other_folder = root / '2026-在研-FILE-SAFE-1-X-文件安全课题扩展版'
+            (other_folder / '01_申报').mkdir(parents=True)
+            (other_folder / '01_申报' / '别人的资料.txt').write_text('别动我', encoding='utf-8')
+            other.directory_path = str(other_folder)
+            other.save(update_fields=['directory_path'])
+
+            with override_settings(PROJECTS_ROOT=root):
+                response = self.client.get(reverse('project_detail', args=[self.project.project_id]))
+
+            self.assertEqual(response.status_code, 200)
+            other.refresh_from_db()
+            self.assertTrue((other_folder / '01_申报' / '别人的资料.txt').is_file())
+            self.assertEqual(other.directory_path, str(other_folder))
+
+    def test_unique_legacy_folder_is_adopted_instead_of_abandoned(self):
+        """旧机器留下的目录只改了绝对路径前缀，重新打开详情页要能找回原文件。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            legacy = root / '2026-在研-FILE-SAFE-1-文件安全课题'
+            (legacy / '01_申报').mkdir(parents=True)
+            (legacy / '01_申报' / '材料.txt').write_text('原始内容', encoding='utf-8')
+            self.project.directory_path = str(root.parent / 'elsewhere' / legacy.name)
+            self.project.save(update_fields=['directory_path'])
+
+            with override_settings(PROJECTS_ROOT=root):
+                response = self.client.get(reverse('project_detail', args=[self.project.project_id]))
+
+            self.assertEqual(response.status_code, 200)
+            self.project.refresh_from_db()
+            self.assertEqual(self.project.directory_path, str(legacy))
+            self.assertEqual((legacy / '01_申报' / '材料.txt').read_text(encoding='utf-8'), '原始内容')
+
+
+class SpecialLedgerPanelTests(TestCase):
+    """专项经费面板：台账按万元解析，系统外课题忽略，重名不自动归属。"""
+
+    INSTITUTE_HEADERS = [
+        ['2020年-今自主立项课题统计表（单位：万元）', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+        ['序号', '项目情况', '', '', '', '', '', '', '', '', '预算执行情况', '', '', '', '', ''],
+        ['', '课题名称', '归属单位', '经费来源', '课题负责人', '开始时间', '结束时间', '研发进度', '已取得成果',
+         '台账链接', '预算额度', '总执行额度', '任务书剩余经费', '本年度可支配经费', '本年预算额', '本年执行额度额度'],
+    ]
+    EXTERNAL_HEADERS = [
+        ['2020年-今外部课题统计表（单位：万元）', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+        ['序号', '项目情况', '', '', '', '', '', '', '', '', '预算执行情况', '', '', '', ''],
+        ['', '课题名称', '归属单位', '经费来源', '课题负责人', '开始时间', '结束时间', '研发进度', '经费明细',
+         '课题合同经费', '归属院/地下空间课题合同经费', '已到账经费', '总执行额度', '可支出经费', '本年执行额度额度'],
+    ]
+
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            'ledger-admin', password='StrongPass!234', is_staff=True
+        )
+        self.readonly = get_user_model().objects.create_user(
+            'ledger-readonly', password='StrongPass!234'
+        )
+        common = dict(
+            ownership='西勘院', managing_unit='测试单位', level='公司级',
+            project_type='应用研究', role='牵头', start_year=2023, start_date=date(2023, 1, 1),
+        )
+        self.active = Project.objects.create(
+            project_id='LEDGER-ACTIVE', name='地铁隧道盾构管片变形加固修复工艺与装备研发',
+            status='在研', total_budget=Decimal('70.00'), institute_funding=Decimal('70.00'),
+            directory_path='LEDGER-ACTIVE', **common,
+        )
+        self.closed = Project.objects.create(
+            project_id='LEDGER-CLOSED', name='烧变岩场地稳定性评价方法及处治技术研究',
+            status='结题', total_budget=Decimal('5.00'), institute_funding=Decimal('5.00'),
+            directory_path='LEDGER-CLOSED', **common,
+        )
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.store_override = override_settings(SPECIAL_LEDGER_DIR=Path(self.temp_dir.name))
+        self.store_override.enable()
+        self.addCleanup(self.store_override.disable)
+
+    @staticmethod
+    def _workbook_bytes(sheet_name, header_rows, data_rows, extra_sheet=True):
+        workbook = openpyxl.Workbook()
+        workbook.active.title = sheet_name
+        for row in header_rows:
+            workbook.active.append(row)
+        for row in data_rows:
+            workbook.active.append(row)
+        if extra_sheet:
+            detail = workbook.create_sheet('1.明细')
+            detail.append(['日期', '合计'])
+            detail.append(['2024-01-01', 100])
+        output = BytesIO()
+        workbook.save(output)
+        return output.getvalue()
+
+    def _institute_rows(self):
+        # 台账填的是元，解析后应折算为万元。
+        return [
+            [1, '地铁隧道盾构管片变形加固修复工艺与装备研发', '特种技术公司', '院自筹', '牛良', '2024.8', '2026.12',
+             '在研', '', '5', 700000, 92195.31, 607804.69, 177227.72, 250000, 72772.28],
+            [3, '烧变岩场地稳定性评价方法及处治技术研究', '西北公司', '院自筹', '张建华', '2023.06', '2024.12',
+             '终止', '', '3', 50000, 2970.30, 47029.70, 17029.70, 20000, 2970.30],
+            [99, '系统中不存在的自主课题', '一公司', '院自筹', '赵六', '2023.01', '2024.12',
+             '结题', '', '——', 30000, 12000, 18000, 0, 0, 0],
+        ]
+
+    def _upload(self, filename, payload, ledger_type='institute'):
+        self.client.force_login(self.admin)
+        return self.client.post(
+            reverse('special_ledger_import'),
+            {'ledger_type': ledger_type, 'ledger_file': SimpleUploadedFile(
+                filename, payload,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
+        )
+
+    def test_parser_converts_yuan_to_wan_and_ignores_unknown_projects(self):
+        path = Path(self.temp_dir.name) / 'institute.xlsx'
+        path.write_bytes(self._workbook_bytes('汇总表', self.INSTITUTE_HEADERS, self._institute_rows()))
+
+        result = parse_special_ledger(path, 'institute', projects=Project.objects.all())
+
+        self.assertEqual(result['header_row'], 3)
+        self.assertEqual(result['matched_total'], 2)
+        self.assertEqual(result['ignored_total'], 1)
+        self.assertEqual(result['ignored_rows'][0]['ledger_name'], '系统中不存在的自主课题')
+        self.assertEqual(result['totals']['approved_budget'], Decimal('75.00'))
+        active = next(record for record in result['records'] if record['project'] == self.active)
+        self.assertEqual(active['approved_budget'], Decimal('70.00'))
+        self.assertEqual(active['executed_total'], Decimal('9.219531'))
+        self.assertEqual(active['match_state'], 'exact')
+
+    def test_parser_quantizes_excel_float_noise(self):
+        # Excel 公式单元格常落成 92195.3100000001，不按元取整的话合计会带出一串尾差。
+        rows = [
+            [1, self.active.name, '特种技术公司', '院自筹', '牛良', '2024.8', '2026.12',
+             '在研', '', '5', 700000, 92195.3100000001, 607804.689999999, 177227.72, 250000, 72772.28],
+            [2, self.closed.name, '西北公司', '院自筹', '张建华', '2023.06', '2024.12',
+             '结题', '', '3', 50000, 2970.30000000013, 47029.70, 17029.70, 20000, 2970.30],
+        ]
+        path = Path(self.temp_dir.name) / 'noise.xlsx'
+        path.write_bytes(self._workbook_bytes('汇总表', self.INSTITUTE_HEADERS, rows))
+
+        result = parse_special_ledger(path, 'institute', projects=Project.objects.all())
+
+        self.assertEqual(result['totals']['executed_total'], Decimal('9.516561'))
+        self.assertEqual(
+            result['totals']['remaining_amount'],
+            result['totals']['approved_budget'] - result['totals']['executed_total'],
+        )
+        active = next(record for record in result['records'] if record['project'] == self.active)
+        self.assertEqual(active['executed_total'], Decimal('9.219531'))
+
+    def test_import_rejects_workbook_without_summary_sheet(self):
+        payload = self._workbook_bytes('其它表', self.INSTITUTE_HEADERS, [], extra_sheet=False)
+
+        self._upload('bad.xlsx', payload)
+        response = self.client.get(reverse('special_expense_monitor'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(SpecialLedgerImport.objects.count(), 0)
+        self.assertContains(response, '导入未生效')
+
+    def test_import_rejects_unscaled_amounts(self):
+        # 预算填成 70 亿元说明单位没换算，必须拒绝而不是静默入库。
+        rows = [[1, self.active.name, '特种技术公司', '院自筹', '牛良', '2024.8', '2026.12', '在研',
+                 '', '5', 7_000_000_000, 1000, 100, 100, 100, 100]]
+        payload = self._workbook_bytes('汇总表', self.INSTITUTE_HEADERS, rows)
+
+        self._upload('scaled.xlsx', payload)
+        response = self.client.get(reverse('special_expense_monitor'))
+
+        self.assertEqual(SpecialLedgerImport.objects.count(), 0)
+        self.assertContains(response, '导入未生效')
+
+    def test_panel_shows_active_rows_and_ignored_list(self):
+        payload = self._workbook_bytes('汇总表', self.INSTITUTE_HEADERS, self._institute_rows())
+        self._upload('institute.xlsx', payload)
+
+        response = self.client.get(reverse('special_expense_monitor'))
+        content = response.content.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(SpecialLedgerImport.objects.count(), 1)
+        self.assertContains(response, '专项经费面板')
+        self.assertIn('地铁隧道盾构管片变形加固修复工艺与装备研发', content)
+        self.assertContains(response, '在研 / 延期专项课题执行 (1)')
+        self.assertContains(response, '结题 / 终止等其他状态课题 (1)')
+        self.assertContains(response, '台账有、系统无（已忽略 1 个）')
+        self.assertIn('9.22', content)
+
+    def test_duplicate_system_names_stay_pending_until_assigned(self):
+        twin = Project.objects.create(
+            project_id='LEDGER-ACTIVE-TWIN', name=self.active.name, status='结题',
+            total_budget=Decimal('90.00'), institute_funding=Decimal('90.00'),
+            ownership='西勘院', managing_unit='测试单位', level='公司级',
+            project_type='应用研究', role='牵头', start_year=2023, start_date=date(2023, 1, 1),
+            directory_path='LEDGER-ACTIVE-TWIN',
+        )
+        payload = self._workbook_bytes('汇总表', self.INSTITUTE_HEADERS, self._institute_rows())
+        self._upload('institute.xlsx', payload)
+
+        response = self.client.get(reverse('special_expense_monitor'))
+        self.assertEqual(SpecialLedgerRow.objects.filter(match_state='ambiguous').count(), 1)
+        self.assertContains(response, '系统重名待确认 (1)')
+        self.assertEqual(SpecialLedgerImport.objects.get().matched_total, 1)
+
+        self.client.post(reverse('special_ledger_assign'), {
+            'ledger_type': 'institute',
+            'ledger_name': self.active.name,
+            'project_id': twin.project_id,
+        })
+        self.assertEqual(SpecialLedgerRow.objects.get(match_state='manual').project_id, twin.project_id)
+
+    def test_external_ledger_uses_received_amount_as_budget(self):
+        special = Project.objects.create(
+            project_id='LEDGER-EXT-1', name='地下物流系统关键技术研究', status='结题',
+            total_budget=Decimal('480.00'), external_funding=Decimal('480.00'),
+            ownership='西勘院', managing_unit='测试单位', level='省部级',
+            project_type='应用研究', role='牵头', start_year=2019, start_date=date(2019, 6, 1),
+            directory_path='LEDGER-EXT-1',
+        )
+        rows = [[1, '地下物流系统关键技术研究', '地下空间研究院', '中建股份', '郑立宁', '2019.6', '2023.12',
+                 '结题', '1', 4800000, 4315000, 4315000, 4053508.98, 261491.02, 8064.53]]
+        self._upload('external.xlsx', self._workbook_bytes('汇总表', self.EXTERNAL_HEADERS, rows),
+                     ledger_type='external')
+
+        row = SpecialLedgerRow.objects.get()
+        self.assertEqual(row.received_amount, Decimal('431.5000'))
+        self.assertEqual(row.budget_amount, Decimal('431.5000'))
+        self.assertEqual(row.executed_total, Decimal('405.350898'))
+        self.assertEqual(row.project_id, special.project_id)
+        self.assertEqual(row.execution_rate.quantize(Decimal('0.1')), Decimal('93.9'))
+
+    def test_repeat_upload_is_idempotent(self):
+        payload = self._workbook_bytes('汇总表', self.INSTITUTE_HEADERS, self._institute_rows())
+        self._upload('institute.xlsx', payload)
+        self._upload('institute.xlsx', payload)
+
+        self.assertEqual(SpecialLedgerImport.objects.count(), 1)
+        self.assertEqual(SpecialLedgerRow.objects.count(), 2)
+
+    def test_readonly_user_can_view_but_not_import(self):
+        payload = self._workbook_bytes('汇总表', self.INSTITUTE_HEADERS, self._institute_rows())
+        self._upload('institute.xlsx', payload)
+        self.client.force_login(self.readonly)
+
+        response = self.client.get(reverse('special_expense_monitor'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'special_ledger_import')
+
+        blocked = self.client.post(reverse('special_ledger_import'), {'ledger_type': 'institute'})
+        self.assertEqual(blocked.status_code, 403)
+
+    def test_panel_renders_when_amounts_missing(self):
+        rows = [[2, self.closed.name, '西北公司', '院自筹', '张建华', '2023.06', '2024.12', '终止',
+                 '', '——', '', '', '', '', '', '']]
+        self._upload('empty-amounts.xlsx', self._workbook_bytes('汇总表', self.INSTITUTE_HEADERS, rows))
+
+        response = self.client.get(reverse('special_expense_monitor'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '结题 / 终止等其他状态课题 (1)')
+
+
+class BudgetInvariantTests(TestCase):
+    """总预算必须等于三个经费池之和，但缺项的历史数据不能被误判。"""
+
+    @staticmethod
+    def _project(**overrides):
+        payload = dict(
+            ownership='西勘院',
+            managing_unit='测试单位',
+            level='公司级',
+            project_type='应用研究',
+            role='牵头',
+            start_year=2026,
+            status='在研',
+            start_date=date(2026, 1, 1),
+            directory_path='BUDGET-INVARIANT',
+        )
+        payload.update(overrides)
+        return Project.objects.create(**payload)
+
+    def test_consistent_budget_passes_validation(self):
+        project = self._project(
+            project_id='BUDGET-OK',
+            name='经费一致的课题',
+            total_budget=Decimal('120.00'),
+            external_funding=Decimal('70.00'),
+            institute_funding=Decimal('30.00'),
+            unit_funding=Decimal('20.00'),
+        )
+        project.full_clean(exclude=['directory_path'])
+
+    def test_inconsistent_total_budget_is_rejected(self):
+        project = self._project(
+            project_id='BUDGET-BAD',
+            name='总预算对不上的课题',
+            total_budget=Decimal('150.00'),
+            external_funding=Decimal('70.00'),
+            institute_funding=Decimal('30.00'),
+            unit_funding=Decimal('20.00'),
+        )
+        with self.assertRaises(ValidationError) as captured:
+            project.full_clean(exclude=['directory_path'])
+
+        self.assertIn('total_budget', captured.exception.message_dict)
+        self.assertIn('120', str(captured.exception))
+
+    def test_missing_funding_parts_are_tolerated(self):
+        # 历史总表常只填部分经费列，缺项时不能凭空要求总预算相等。
+        project = self._project(
+            project_id='BUDGET-PARTIAL',
+            name='只登记了外部专项的历史课题',
+            total_budget=Decimal('480.00'),
+            external_funding=Decimal('480.00'),
+        )
+        project.full_clean(exclude=['directory_path'])
+
+    def test_budget_labels_come_from_verbose_name(self):
+        self.assertEqual(
+            [Project._meta.get_field(name).verbose_name for name in Project.BUDGET_PART_FIELDS],
+            ['外部专项', '院专项', '单位自筹'],
+        )
+
+
+class ExpenseSnapshotRetentionTests(TestCase):
+    """删除课题不能连带删除历史支出快照。"""
+
+    def test_snapshot_survives_project_deletion(self):
+        project = Project.objects.create(
+            project_id='SNAP-KEEP-1',
+            name='快照保留课题',
+            ownership='西勘院',
+            managing_unit='测试单位',
+            level='公司级',
+            project_type='应用研究',
+            role='牵头',
+            start_year=2026,
+            status='在研',
+            start_date=date(2026, 1, 1),
+            directory_path='SNAP-KEEP-1',
+        )
+        import_log = ExpenseImport.objects.create(
+            source_file='支出监控_当前月.xlsx',
+            format_version=EXPENSE_FORMAT_VERSION,
+        )
+        ExpenseSnapshot.objects.create(
+            import_log=import_log,
+            project=project,
+            project_name=project.name,
+            total_expense=Decimal('12.3400'),
+        )
+
+        project.delete()
+
+        snapshot = ExpenseSnapshot.objects.get(import_log=import_log)
+        self.assertIsNone(snapshot.project_id)
+        self.assertEqual(snapshot.project_name, '快照保留课题')
+        self.assertEqual(snapshot.total_expense, Decimal('12.3400'))

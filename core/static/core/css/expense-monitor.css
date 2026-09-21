@@ -134,6 +134,12 @@
     font-size: 12px;
 }
 
+.expense-company-label {
+    margin-top: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
 .expense-other-company-note {
     margin-top: 14px;
     padding: 10px 12px;
@@ -195,4 +201,31 @@
         margin-top: 12px;
         flex-wrap: wrap;
     }
+}
+
+.special-ledger-upload-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.special-rate {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 120px;
+}
+
+.special-rate-track {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--color-surface-alt, #eef1f5);
+    overflow: hidden;
+}
+
+.special-rate-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--color-primary, #2563eb);
 }
