@@ -141,6 +141,17 @@ def _resolve_within_root(root, relative_path):
     return target
 
 
+PROTECTED_FOLDER_RE = re.compile(r'^0[1-6]')
+
+def _is_protected_folder(abs_path):
+    """01~06 是 PRD 规定的标准目录，界面不给删除入口，后端也必须拒绝。
+
+    只在模板里藏住链接挡不住直接 POST /file/delete/：实测一次请求就能删掉
+    01_申报，整夹申报资料随之消失，所以校验要落在服务端而不是只靠前端。
+    """
+    return bool(PROTECTED_FOLDER_RE.match(os.path.basename(os.path.normpath(str(abs_path)))))
+
+
 def _unique_upload_path(target_dir, filename, max_suffix=999):
     """同名文件不覆盖，自动改成 名称_1.ext；上传不应静默丢资料。"""
     candidate = os.path.join(target_dir, filename)
@@ -2316,6 +2327,12 @@ def file_action_view(request, project_id, action):
                     return JsonResponse({'success': False, 'message': '无效的文件路径：只能删除课题目录内的文件或文件夹。'})
                 messages.error(request, "无效的文件路径：只能删除课题目录内的文件或文件夹。")
                 return redirect('project_detail', project_id=project.project_id)
+
+            if os.path.isdir(item_path_abs) and _is_protected_folder(item_path_abs):
+                if is_ajax:
+                    return JsonResponse({'success': False, 'message': '标准目录（01~06）不允许删除。'})
+                messages.error(request, "标准目录（01~06）不允许删除。")
+                return redirect('project_detail', project_id=project.project_id)
                 
             if os.path.exists(item_path_abs):
                 try:
@@ -2365,6 +2382,13 @@ def file_action_view(request, project_id, action):
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '无效的目标路径：只能重命名课题目录内的文件或文件夹。'})
             messages.error(request, "无效的目标路径：只能重命名课题目录内的文件或文件夹。")
+            return redirect('project_detail', project_id=project.project_id)
+
+        # 把 01~06 改名等同于删掉标准目录（下次打开只会新建空目录，资料被孤立）
+        if os.path.isdir(item_path_abs) and _is_protected_folder(item_path_abs):
+            if is_ajax:
+                return JsonResponse({'success': False, 'message': '标准目录（01~06）不允许重命名。'})
+            messages.error(request, "标准目录（01~06）不允许重命名。")
             return redirect('project_detail', project_id=project.project_id)
 
         if not os.path.exists(item_path_abs):

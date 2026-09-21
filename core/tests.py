@@ -2330,6 +2330,36 @@ class FileManagementRoutingTests(TestCase):
             self.assertFalse((folder / '01_申报' / '材料.txt').exists())
             self.assertTrue(folder.is_dir())
 
+    def test_standard_folder_cannot_be_deleted_by_posting_directly(self):
+        """界面不给 01~06 删除入口，后端也要挡住绕过界面的 POST。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = self.make_tree(temp_dir)
+            with override_settings(PROJECTS_ROOT=Path(temp_dir)):
+                response = self.client.post(
+                    reverse('file_action', args=[self.project.project_id, 'delete']),
+                    {'path': '01_申报'},
+                    headers={'x-requested-with': 'XMLHttpRequest'},
+                )
+
+            self.assertFalse(response.json()['success'])
+            self.assertTrue((folder / '01_申报').is_dir())
+            self.assertTrue((folder / '01_申报' / '材料.txt').is_file())
+
+    def test_standard_folder_cannot_be_renamed_away(self):
+        """改名等于变相删除标准目录，同样拒绝。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = self.make_tree(temp_dir)
+            with override_settings(PROJECTS_ROOT=Path(temp_dir)):
+                response = self.client.post(
+                    reverse('file_action', args=[self.project.project_id, 'rename']),
+                    {'path': '01_申报', 'new_name': '废弃'},
+                    headers={'x-requested-with': 'XMLHttpRequest'},
+                )
+
+            self.assertFalse(response.json()['success'])
+            self.assertTrue((folder / '01_申报' / '材料.txt').is_file())
+            self.assertFalse((folder / '废弃').exists())
+
     def test_upload_does_not_overwrite_existing_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             folder = self.make_tree(temp_dir)
