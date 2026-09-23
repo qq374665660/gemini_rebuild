@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>企业全自筹课题面板 - 科研课题管理系统</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/css/design-system.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/navigation.css' %}?v=3.0">
+    <link rel="stylesheet" href="{% static 'core/css/layout.css' %}?v=2.0">
+    <link rel="stylesheet" href="{% static 'core/css/page-title-card.css' %}?v=1.0">
+    <link rel="stylesheet" href="{% static 'core/vendor/fontawesome/css/all.min.css' %}?v=6.0.0">
+    <style>
+        .sf-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+        .sf-stat { background: var(--color-surface, #fff); border: 1px solid var(--color-border, #e2e8f0); border-radius: 10px; padding: 14px 16px; }
+        .sf-stat-value { font-size: 1.4rem; font-weight: 700; }
+        .sf-stat-label { font-size: 0.8rem; color: var(--color-text-muted, #64748b); margin-top: 2px; }
+        .sf-stat-danger .sf-stat-value { color: #dc2626; }
+        .sf-stat-warn .sf-stat-value { color: #d97706; }
+        .sf-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 16px; }
+        .sf-filters label { display: flex; flex-direction: column; font-size: 0.78rem; color: var(--color-text-muted, #64748b); gap: 4px; }
+        .sf-filters select, .sf-filters input { min-width: 140px; padding: 7px 9px; border: 1px solid var(--color-border, #cbd5e1); border-radius: 8px; font-size: 0.86rem; }
+        .sf-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        .sf-table th, .sf-table td { padding: 9px 10px; border-bottom: 1px solid var(--color-border, #e2e8f0); text-align: left; vertical-align: top; }
+        .sf-table th { font-size: 0.78rem; color: var(--color-text-muted, #475569); white-space: nowrap; background: var(--color-surface-alt, #f8fafc); }
+        .sf-table th a { color: inherit; text-decoration: none; }
+        .sf-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .sf-over { color: #dc2626; font-weight: 700; }
+        .sf-docs { display: flex; gap: 10px; white-space: nowrap; }
+        .sf-doc { display: inline-flex; align-items: center; gap: 4px; font-size: 0.76rem; color: var(--color-text-muted, #475569); }
+        .sf-box { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border: 1px solid var(--color-border, #94a3b8); border-radius: 4px; font-size: 0.72rem; line-height: 1; }
+        .sf-box-on { background: #16a34a; border-color: #16a34a; color: #fff; }
+        .sf-pending { color: #d97706; font-size: 0.76rem; }
+        .sf-muted { color: var(--color-text-muted, #94a3b8); }
+        .sf-note { font-size: 0.78rem; color: var(--color-text-muted, #64748b); margin-top: 10px; }
+    </style>
+</head>
+<body>
+    {% include 'core/partials/navbar.html' %}
+    <main class="app-main">
+        <div class="app-content">
+            <div class="page-header project-list-page-header standalone-title-card">
+                <div class="container">
+                    <div class="page-header-content">
+                        <div>
+                            <h1 class="page-title"><i class="fas fa-wallet"></i> 企业全自筹课题面板</h1>
+                            <p class="page-subtitle">自筹额度、累计支出、超支与立项/中期/结题材料齐套情况</p>
+                        </div>
+                        {% if is_system_admin %}<div class="page-actions">
+                            <button class="btn btn-secondary" id="export-btn" data-export-url="{{ export_url }}">
+                                <i class="fas fa-download"></i> 导出课题清单
+                            </button>
+                            <button class="btn btn-secondary" id="import-btn">
+                                <i class="fas fa-file-excel"></i> 从Excel导入
+                            </button>
+                            <a href="{% url 'create_project' %}?funding_category=self_funded" class="btn btn-primary">
+                                <i class="fas fa-plus"></i> 新建自筹课题
+                            </a>
+                        </div>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="container" style="margin-top:-18px;margin-bottom:18px;display:flex;gap:8px;">
+                <a href="{% url 'project_list' %}" class="btn btn-secondary">专项经费课题</a>
+                <a href="{% url 'self_funded_project_list' %}" class="btn btn-primary">企业全自筹课题</a>
+                <a href="{% url 'self_funded_expense_monitor' %}" class="btn btn-secondary">自筹支出归集</a>
+            </div>
+
+            <div class="page-body">
+                <div class="container">
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+
+                    <div class="sf-stats">
+                        <div class="sf-stat"><div class="sf-stat-value">{{ summary.count }}</div><div class="sf-stat-label">课题数</div></div>
+                        <div class="sf-stat sf-stat-danger"><div class="sf-stat-value">{{ summary.overdue }}</div><div class="sf-stat-label">超期</div></div>
+                        <div class="sf-stat"><div class="sf-stat-value">{{ summary.ongoing }}</div><div class="sf-stat-label">在研</div></div>
+                        <div class="sf-stat"><div class="sf-stat-value">{{ summary.unit_funding|floatformat:2 }}</div><div class="sf-stat-label">单位自筹合计(万元)</div></div>
+                        <div class="sf-stat"><div class="sf-stat-value">{{ summary.total_expense|floatformat:2 }}</div><div class="sf-stat-label">累计支出合计(万元)</div></div>
+                        <div class="sf-stat sf-stat-danger"><div class="sf-stat-value">{{ summary.overspend|floatformat:2 }}</div><div class="sf-stat-label">超支合计(万元) · {{ summary.overspend_count }}条</div></div>
+                        <div class="sf-stat sf-stat-warn"><div class="sf-stat-value">{{ summary.pending }}</div><div class="sf-stat-label">缺自筹额度待确认</div></div>
+                    </div>
+
+                    <div class="content-section">
+                        <div class="content-section-header">
+                            <h3 class="content-section-title"><i class="fas fa-list"></i> 课题列表 <span class="badge badge-primary">{{ summary.count }}</span></h3>
+                        </div>
+                        <div class="content-section-body">
+                            <form method="get" class="sf-filters">
+                                <label>关键词
+                                    <input type="text" name="q" value="{{ query }}" placeholder="课题名称、编号、负责人">
+                                </label>
+                                <label>年份
+                                    <select name="year">
+                                        <option value="">全部</option>
+                                        <option value="unknown" {% if selected_year == 'unknown' %}selected{% endif %}>待确认</option>
+                                        {% for year in distinct_years %}
+                                            <option value="{{ year }}" {% if selected_year == year|stringformat:'s' %}selected{% endif %}>{{ year }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <label>状态
+                                    <select name="board_status">
+                                        <option value="">全部</option>
+                                        {% for status in status_options %}
+                                            <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <label>归口单位
+                                    <select name="managing_unit">
+                                        <option value="">全部</option>
+                                        {% for unit in distinct_units %}
+                                            <option value="{{ unit.value }}" title="{{ unit.value }}" {% if selected_unit == unit.value %}selected{% endif %}>{{ unit.label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <label>负责人
+                                    <select name="project_lead">
+                                        <option value="">全部</option>
+                                        {% for lead in distinct_leads %}
+                                            <option value="{{ lead }}" {% if selected_lead == lead %}selected{% endif %}>{{ lead }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <label>超支
+                                    <select name="overspend">
+                                        <option value="">全部</option>
+                                        <option value="pending" {% if only_pending %}selected{% endif %}>仅看待确认</option>
+                                    </select>
+                                </label>
+                                <div style="display:flex;gap:8px;">
+                                    <button type="submit" class="btn btn-primary btn-sm">筛选</button>
+                                    {% if filters_applied %}<a href="{% url 'self_funded_project_list' %}" class="btn btn-secondary btn-sm">重置</a>{% endif %}
+                                </div>
+                            </form>
+
+                            <div class="table-responsive">
+                                <table class="sf-table">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">序号</th>
+                                            <th scope="col"><a href="{{ sort_links.name.url }}">课题名称 <i class="{{ sort_links.name.icon }}"></i></a></th>
+                                            <th scope="col"><a href="{{ sort_links.managing_unit.url }}">归口单位 <i class="{{ sort_links.managing_unit.icon }}"></i></a></th>
+                                            <th scope="col"><a href="{{ sort_links.project_lead.url }}">负责人 <i class="{{ sort_links.project_lead.icon }}"></i></a></th>
+                                            <th scope="col"><a href="{{ sort_links.start_year.url }}">年份 <i class="{{ sort_links.start_year.icon }}"></i></a></th>
+                                            <th scope="col"><a href="{{ sort_links.board_status.url }}">状态 <i class="{{ sort_links.board_status.icon }}"></i></a></th>
+                                            <th scope="col" class="sf-num"><a href="{{ sort_links.unit_funding.url }}">单位自筹 <i class="{{ sort_links.unit_funding.icon }}"></i></a></th>
+                                            <th scope="col" class="sf-num"><a href="{{ sort_links.total_expense.url }}">累计支出 <i class="{{ sort_links.total_expense.icon }}"></i></a></th>
+                                            <th scope="col" class="sf-num"><a href="{{ sort_links.overspend.url }}">超支经费 <i class="{{ sort_links.overspend.icon }}"></i></a></th>
+                                            <th scope="col">文件状态</th>
+                                            <th scope="col">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for row in rows %}
+                                        <tr>
+                                            <td>{{ page_obj.start_index|add:forloop.counter0 }}</td>
+                                            <td>
+                                                <strong><a href="{% url 'project_detail' row.project.project_id %}">{{ row.project.name }}</a></strong>
+                                                <div class="sf-muted" style="font-size:0.8rem;">{{ row.project.project_id }}</div>
+                                            </td>
+                                            <td title="{{ row.project.managing_unit }}">{{ row.unit_label|default:'-' }}</td>
+                                            <td>{{ row.project.project_lead|default:'-' }}</td>
+                                            <td>{{ row.year_text }}</td>
+                                            <td>
+                                                {% if row.board_status == overdue_label %}
+                                                    <span class="badge badge-danger">{{ row.board_status }}</span>
+                                                {% elif row.board_status == '结题' %}
+                                                    <span class="badge badge-success">{{ row.board_status }}</span>
+                                                {% elif row.board_status == '在研' %}
+                                                    <span class="badge badge-primary">{{ row.board_status }}</span>
+                                                {% else %}
+                                                    <span class="badge badge-secondary">{{ row.board_status }}</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="sf-num">
+                                                {% if row.unit_funding is not None %}{{ row.unit_funding|floatformat:2 }}{% else %}<span class="sf-muted">-</span>{% endif %}
+                                            </td>
+                                            <td class="sf-num">
+                                                {% if row.total_expense is not None %}{{ row.total_expense|floatformat:2 }}{% else %}<span class="sf-muted">-</span>{% endif %}
+                                            </td>
+                                            <td class="sf-num">
+                                                {% if row.overspend is not None %}
+                                                    {% if row.overspend > 0 %}<span class="sf-over">{{ row.overspend|floatformat:2 }}</span>{% else %}{{ row.overspend|floatformat:2 }}{% endif %}
+                                                {% elif row.overspend_pending %}
+                                                    <span class="sf-pending" title="有支出但课题档案未登记单位自筹额度，无法计算超支">{{ pending_label }}</span>
+                                                {% else %}
+                                                    <span class="sf-muted">-</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <div class="sf-docs">
+                                                    {% for stage in file_stages %}
+                                                    <span class="sf-doc">
+                                                        {{ stage.label }}
+                                                        <span class="sf-box {% if stage.key in row.file_flags_filled %}sf-box-on{% endif %}" title="{{ stage.label }}">{% if stage.key in row.file_flags_filled %}<i class="fas fa-check"></i>{% endif %}</span>
+                                                    </span>
+                                                    {% endfor %}
+                                                </div>
+                                            </td>
+                                            <td><a href="{% url 'project_detail' row.project.project_id %}" class="btn btn-secondary btn-sm">详情</a></td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {% if page_obj.has_other_pages %}
+                                <nav class="pagination" aria-label="课题列表分页">
+                                    {% if page_obj.has_previous %}
+                                        <a class="pagination-link" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">上一页</a>
+                                    {% endif %}
+                                    <span>第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页，共 {{ page_obj.paginator.count }} 项</span>
+                                    {% if page_obj.has_next %}
+                                        <a class="pagination-link" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">下一页</a>
+                                    {% endif %}
+                                </nav>
+                            {% endif %}
+
+                            <p class="sf-note">
+                                状态口径：结题按档案显示，其余无结题时间或已过结题时间一律计为「{{ overdue_label }}」。
+                                超支 = 累计支出 − 单位自筹；有支出但未登记自筹额度的记「{{ pending_label }}」，不计入超支合计。
+                                文件状态按课题目录判断：立项看 02_立项，任务书看 03_开题及任务书，中期看 04_中期，结题看 06_结题；
+                                材料放错目录时按文件名兜底识别，避免已有文件却显示缺格。
+                                {% if expense_batch %}支出数据批次 #{{ expense_batch.id }}（{{ expense_batch.created_at|date:'Y-m-d H:i' }}）{% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    {% if is_system_admin %}
+        <form method="post" action="{% url 'import_from_excel' %}" enctype="multipart/form-data" id="excel-form" style="display: none;">
+            {% csrf_token %}
+            <input type="hidden" name="funding_category" value="self_funded">
+            <input type="file" name="excel_file" required accept=".xlsx, .xls" id="excel_upload">
+        </form>
+        <script>
+            document.getElementById('export-btn').addEventListener('click', function () {
+                window.location.href = this.dataset.exportUrl;
+            });
+            document.getElementById('import-btn').addEventListener('click', function () {
+                document.getElementById('excel_upload').click();
+            });
+            document.getElementById('excel_upload').addEventListener('change', function () {
+                if (this.files.length > 0) {
+                    document.getElementById('excel-form').submit();
+                }
+            });
+        </script>
+    {% endif %}
+</body>
+</html>

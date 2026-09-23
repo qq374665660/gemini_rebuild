@@ -2,9 +2,10 @@ from django.shortcuts import render, redirect, get_object_or_404
 from collections import defaultdict
 from django.conf import settings
 from django.urls import reverse
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Sum
 from django.http import HttpResponse, Http404, FileResponse, JsonResponse, HttpResponseForbidden
 from django.utils.encoding import force_str
+from urllib.parse import urlencode
 import shutil
 import os
 import re
@@ -3085,8 +3086,278 @@ def query_assistant_view(request):
     })
 
 
+SELF_FUNDED_OVERDUE = '超期'
+SELF_FUNDED_PAGE_SIZE = 30
+SELF_FUNDED_PENDING = '待确认'
+# 文件状态四格，按流程从前到后排：立项 → 任务书 → 中期 → 结题。
+# 本目录有文件即打勾；材料常被放错目录（院自主立项的任务书丢在 02_立项），
+# 所以再按文件名跨目录认一次，否则任务书明明在库里却显示缺一格，逼人重复上传。
+SELF_FUNDED_FILE_STAGES = (
+    {
+        'key': 'approval', 'label': '立项', 'folders': ('02_立项',),
+        'needles': ('立项书', '立项批复', '立项文件', '开题报告'),
+    },
+    {
+        'key': 'taskbook', 'label': '任务书', 'folders': ('03_开题及任务书',),
+        'needles': ('任务书', '协议书'),
+    },
+    {'key': 'midterm', 'label': '中期', 'folders': ('04_中期',), 'needles': ('中期',)},
+    # 不收「验收」：04_中期 里的《自主立项中期验收意见表》会被误判成结题。
+    {'key': 'closing', 'label': '结题', 'folders': ('06_结题',), 'needles': ('结题',)},
+)
+# 只扫这四格相关的目录，01_申报/05_变更/07_其它 里的文件名不参与判定。
+SELF_FUNDED_FILE_SCAN = tuple(sorted({folder for stage in SELF_FUNDED_FILE_STAGES for folder in stage['folders']}))
+
+# 归口单位简写：界面列宽有限，长全称只保留区分度最高的后缀。
+UNIT_ABBR_PREFIXES = (
+    ('中建地下空间有限公司', '地下空间'),
+    ('中建地下空间', '地下空间'),
+    ('中建西勘院', ''),
+)
+
+
+def _self_funded_unit_label(unit):
+    """把归口单位全称缩成界面短名：中建西勘院华东公司 -> 华东，中建地下空间有限公司贵州公司 -> 地下空间贵州。"""
+    parts = []
+    for raw in re.split(r'[、,，/]', unit or ''):
+        part = raw.strip()
+        if not part:
+            continue
+        for prefix, replacement in UNIT_ABBR_PREFIXES:
+            if part.startswith(prefix):
+                tail = part[len(prefix):]
+                # 只剥「公司」不剥「分公司」：直营公司与直营分公司是两家单位，简写撞一起或切成「直营分」都没法看。
+                if tail.endswith('公司') and not tail.endswith('分公司') and len(tail) > 2:
+                    tail = tail[:-2]
+                # 「中建地下空间有限公司地下空间研究院」去掉前缀后别把主体名叠两遍。
+                if replacement and tail.startswith(replacement):
+                    tail = tail[len(replacement):]
+                part = f'{replacement}{tail}' if tail else replacement
+                break
+        parts.append(part)
+    return '、'.join(parts)
+
+
+def _self_funded_board_status(project, today):
+    """结题/终止照档案显示；其余只要没有结题时间、或结题时间已过，一律判超期。"""
+    if project.status == '结题':
+        return '结题'
+    if project.status == '终止':
+        return '终止'
+    deadline = project.extension_date or project.planned_end_date
+    if deadline is None or deadline < today:
+        return SELF_FUNDED_OVERDUE
+    return project.status or '在研'
+
+
+def _self_funded_expense_totals():
+    """每个课题的累计支出，取最新支出批次的快照。"""
+    latest = ExpenseImport.objects.filter(
+        format_version=EXPENSE_FORMAT_VERSION,
+    ).order_by('-created_at').first()
+    if latest is None:
+        return {}, None
+    totals = {}
+    rows = ExpenseSnapshot.objects.filter(import_log=latest, project__isnull=False).values('project_id').annotate(
+        total=Sum('total_expense')
+    )
+    for row in rows:
+        totals[row['project_id']] = row['total']
+    return totals, latest
+
+
+def _self_funded_file_flags(project):
+    """先看本目录有没有文件，再看文件名能不能对上号；目录本身在不在不算数。"""
+    base = Path(project.directory_path) if project.directory_path else None
+    if base is None:
+        return []
+    names_by_folder = {}
+    for folder in SELF_FUNDED_FILE_SCAN:
+        candidate = base / folder
+        if candidate.is_dir():
+            names_by_folder[folder] = [entry.name for entry in candidate.iterdir() if entry.is_file()]
+
+    filled = []
+    for stage in SELF_FUNDED_FILE_STAGES:
+        own = any(names_by_folder.get(folder) for folder in stage['folders'])
+        hit = any(
+            needle in name
+            for names in names_by_folder.values()
+            for name in names
+            for needle in stage['needles']
+        )
+        if own or hit:
+            filled.append(stage['key'])
+    return filled
+
+
+def _self_funded_board_rows(projects, expense_totals, today):
+    rows = []
+    for project in projects:
+        funding = project.unit_funding
+        expense = expense_totals.get(project.project_id)
+        overspend = None
+        if expense is not None and funding is not None:
+            overspend = expense - funding if expense > funding else Decimal('0')
+        rows.append({
+            'project': project,
+            'board_status': _self_funded_board_status(project, today),
+            'year_text': str(project.start_year) if project.start_year else SELF_FUNDED_PENDING,
+            'unit_label': _self_funded_unit_label(project.managing_unit),
+            'unit_funding': funding,
+            'total_expense': expense,
+            'overspend': overspend,
+            # 有支出却没登记自筹额度：分母缺失，不能算超支，交人工补录。
+            'overspend_pending': expense is not None and expense > 0 and funding is None,
+        })
+    return rows
+
+
+SELF_FUNDED_SORTS = {
+    'name': lambda row: row['project'].name,
+    '-name': lambda row: row['project'].name,
+    'start_year': lambda row: row['project'].start_year,
+    '-start_year': lambda row: row['project'].start_year,
+    'board_status': lambda row: row['board_status'],
+    '-board_status': lambda row: row['board_status'],
+    'managing_unit': lambda row: row['project'].managing_unit,
+    '-managing_unit': lambda row: row['project'].managing_unit,
+    'project_lead': lambda row: row['project'].project_lead,
+    '-project_lead': lambda row: row['project'].project_lead,
+    'unit_funding': lambda row: (row['unit_funding'] is None, row['unit_funding'] or Decimal('0')),
+    '-unit_funding': lambda row: (row['unit_funding'] is None, row['unit_funding'] or Decimal('0')),
+    'total_expense': lambda row: (row['total_expense'] is None, row['total_expense'] or Decimal('0')),
+    '-total_expense': lambda row: (row['total_expense'] is None, row['total_expense'] or Decimal('0')),
+    'overspend': lambda row: (row['overspend'] is None, row['overspend'] or Decimal('0')),
+    '-overspend': lambda row: (row['overspend'] is None, row['overspend'] or Decimal('0')),
+}
+
+
 def self_funded_project_list_view(request):
-    return project_list_view(request, funding_category='self_funded')
+    """全自筹课题面板：自筹额度、累计支出、超支与三段文件状态。"""
+    today = timezone.localdate()
+    queryset = Project.objects.filter(funding_category='self_funded')
+
+    query = (request.GET.get('q') or '').strip()
+    if query:
+        queryset = queryset.filter(
+            Q(name__icontains=query)
+            | Q(project_id__icontains=query)
+            | Q(project_lead__icontains=query)
+            | Q(contact_person__icontains=query)
+            | Q(managing_unit__icontains=query)
+            | Q(remarks__icontains=query)
+        )
+
+    selected_unit = (request.GET.get('managing_unit') or '').strip()
+    if selected_unit:
+        queryset = queryset.filter(managing_unit=selected_unit)
+
+    selected_lead = (request.GET.get('project_lead') or '').strip()
+    if selected_lead:
+        queryset = queryset.filter(project_lead=selected_lead)
+
+    selected_year = (request.GET.get('year') or '').strip()
+    if selected_year == 'unknown':
+        queryset = queryset.filter(start_year=0)
+    elif selected_year.isdigit():
+        queryset = queryset.filter(start_year=int(selected_year))
+
+    expense_totals, expense_batch = _self_funded_expense_totals()
+    rows = _self_funded_board_rows(queryset, expense_totals, today)
+
+    board_statuses = [item['value'] for item in [
+        {'value': SELF_FUNDED_OVERDUE}, {'value': '在研'}, {'value': '结题'}, {'value': '终止'},
+    ]]
+    selected_status = (request.GET.get('board_status') or '').strip()
+    if selected_status in board_statuses:
+        rows = [row for row in rows if row['board_status'] == selected_status]
+
+    only_pending = request.GET.get('overspend') == 'pending'
+    if only_pending:
+        rows = [row for row in rows if row['overspend_pending']]
+
+    sort = request.GET.get('sort') or '-start_year'
+    if sort not in SELF_FUNDED_SORTS:
+        sort = '-start_year'
+    # 先按编号收口再按目标字段排，同值行的顺序才稳定、翻页不会串行。
+    rows.sort(key=lambda row: row['project'].project_id)
+    rows.sort(key=SELF_FUNDED_SORTS[sort], reverse=sort.startswith('-'))
+
+    summary = {
+        'count': len(rows),
+        'overdue': sum(1 for row in rows if row['board_status'] == SELF_FUNDED_OVERDUE),
+        'ongoing': sum(1 for row in rows if row['board_status'] == '在研'),
+        'unit_funding': sum((row['unit_funding'] for row in rows if row['unit_funding'] is not None), Decimal('0')),
+        'total_expense': sum((row['total_expense'] for row in rows if row['total_expense'] is not None), Decimal('0')),
+        'overspend': sum((row['overspend'] for row in rows if row['overspend'] is not None), Decimal('0')),
+        'overspend_count': sum(1 for row in rows if row['overspend'] and row['overspend'] > 0),
+        'pending': sum(1 for row in rows if row['overspend_pending']),
+    }
+
+    # 导出走既有导出器，它只认 关键词/年份/归口单位/负责人 这几个参数；
+    # 面板独有的 状态/超支 是展示层算出来的，导出不认，硬拼上去会让人以为导出跟着筛了。
+    export_params = {}
+    for key, value in (('q', query), ('year', selected_year),
+                       ('managing_unit', selected_unit), ('project_lead', selected_lead)):
+        if value:
+            export_params[key] = value
+    export_url = reverse('export_project_list') + '?funding_category=self_funded'
+    if export_params:
+        export_url += '&' + urlencode(export_params)
+
+    paginator = Paginator(rows, SELF_FUNDED_PAGE_SIZE)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    for row in page_obj.object_list:
+        row['file_flags_filled'] = _self_funded_file_flags(row['project'])
+
+    # 排序链接要带着当前筛选条件，否则一点表头筛过的条件就全丢了。
+    def build_sort_link(field_name):
+        params = request.GET.copy()
+        params.pop('page', None)
+        params['sort'] = field_name if sort != field_name else f'-{field_name}'
+        return {'url': f'?{params.urlencode()}', 'icon': 'fas fa-sort-up' if sort == field_name else 'fas fa-sort-down' if sort == f'-{field_name}' else 'fas fa-sort'}
+
+    sort_links = {
+        field_name: build_sort_link(field_name)
+        for field_name in ('name', 'managing_unit', 'project_lead', 'start_year',
+                           'board_status', 'unit_funding', 'total_expense', 'overspend')
+    }
+    pagination_params = request.GET.copy()
+    pagination_params.pop('page', None)
+
+    scoped = Project.objects.filter(funding_category='self_funded')
+    context = {
+        'rows': page_obj.object_list,
+        'page_obj': page_obj,
+        'pagination_query': pagination_params.urlencode(),
+        'summary': summary,
+        'file_stages': SELF_FUNDED_FILE_STAGES,
+        'overdue_label': SELF_FUNDED_OVERDUE,
+        'pending_label': SELF_FUNDED_PENDING,
+        'status_options': board_statuses,
+        'sort': sort,
+        'sort_links': sort_links,
+        'export_url': export_url,
+        'query': query,
+        'selected_unit': selected_unit,
+        'selected_lead': selected_lead,
+        'selected_year': selected_year,
+        'selected_status': selected_status,
+        'only_pending': only_pending,
+        'distinct_years': [value for value in scoped.values_list('start_year', flat=True).distinct().order_by('-start_year') if value],
+        'distinct_units': [
+            {'value': unit, 'label': _self_funded_unit_label(unit)}
+            for unit in scoped.exclude(managing_unit='').values_list('managing_unit', flat=True).distinct().order_by('managing_unit')
+        ],
+        'distinct_leads': scoped.exclude(project_lead='').values_list('project_lead', flat=True).distinct().order_by('project_lead'),
+        'expense_batch': expense_batch,
+        'filters_applied': bool(query or selected_unit or selected_lead or selected_year or selected_status or only_pending),
+        'funding_category': 'self_funded',
+        'funding_category_label': '企业全自筹课题',
+        'is_self_funded': True,
+    }
+    return render(request, 'core/self_funded_project_list.html', context)
 
 
 def self_funded_progress_monitor_view(request):
