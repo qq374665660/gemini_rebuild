@@ -3,6 +3,7 @@ from decimal import Decimal
 from io import BytesIO, StringIO
 from pathlib import Path
 import json
+import re
 import tempfile
 import zipfile
 from unittest.mock import patch
@@ -2620,7 +2621,7 @@ class SpecialLedgerPanelTests(TestCase):
         })
         self.assertEqual(SpecialLedgerRow.objects.get(match_state='manual').project_id, twin.project_id)
 
-    def test_external_ledger_uses_received_amount_as_budget(self):
+    def test_external_ledger_parses_amounts_into_wan(self):
         special = Project.objects.create(
             project_id='LEDGER-EXT-1', name='地下物流系统关键技术研究', status='结题',
             total_budget=Decimal('480.00'), external_funding=Decimal('480.00'),
@@ -2635,10 +2636,134 @@ class SpecialLedgerPanelTests(TestCase):
 
         row = SpecialLedgerRow.objects.get()
         self.assertEqual(row.received_amount, Decimal('431.5000'))
-        self.assertEqual(row.budget_amount, Decimal('431.5000'))
         self.assertEqual(row.executed_total, Decimal('405.350898'))
         self.assertEqual(row.project_id, special.project_id)
-        self.assertEqual(row.execution_rate.quantize(Decimal('0.1')), Decimal('93.9'))
+
+    @staticmethod
+    def _headers(html):
+        # 表尾说明里也会提到这些词，断言必须只看表头。
+        return ' | '.join(
+            ' '.join(re.sub(r'<[^>]+>', ' ', block).split())
+            for block in re.findall(r'<thead>(.*?)</thead>', html, re.S)
+        )
+
+    def test_main_table_shows_seven_columns_from_project_budget(self):
+        # 专项经费取课题档案的「外部专项」100，不是台账已到账 50；剩余 = 专项经费 − 已执行。
+        project = Project.objects.create(
+            project_id='CSCEC-2024-Z-28', name='地铁隧道盾构管片变形加固修复工艺研发', status='在研',
+            total_budget=Decimal('300.00'), external_funding=Decimal('100.00'),
+            ownership='西勘院', managing_unit='测试单位', level='公司级',
+            project_type='应用研究', role='牵头', start_year=2024, start_date=date(2024, 1, 1),
+            directory_path='CSCEC-2024-Z-28',
+        )
+        rows = [[1, project.name, '地下空间研究院', '中建股份', '张明', '2024.1', '2026.12',
+                 '在研', '1', 1000000, 1000000, 500000, 279557.06, 220442.94, 56475.09]]
+        self._upload('external.xlsx', self._workbook_bytes('汇总表', self.EXTERNAL_HEADERS, rows),
+                     ledger_type='external')
+        self._upload('institute.xlsx', self._workbook_bytes('汇总表', self.INSTITUTE_HEADERS, self._institute_rows()))
+
+        external_view = self.client.get(reverse('special_expense_monitor')).content.decode()
+        self.assertIn('课题名称 专项经费 已执行 剩余 执行率 未到账 本年执行', self._headers(external_view))
+
+        row_html = next(
+            block for block in re.findall(r'<tr>(.*?)</tr>', external_view, re.S)
+            if project.name in block
+        )
+        cells = [re.sub(r'<[^>]+>', '', cell).strip() for cell in re.findall(r'<td.*?>(.*?)</td>', row_html, re.S)]
+        self.assertEqual(cells[1:], ['100.00', '27.96', '72.04', '28.0%', '50.00', '5.65'])
+
+        # 院自主课题的专项经费取档案「院专项」，且没有到账环节，未到账显示“-”。
+        institute_view = self.client.get(reverse('special_expense_monitor') + '?ledger_type=institute').content.decode()
+        self.assertNotIn('已到账经费', self._headers(institute_view))
+        institute_row = next(
+            block for block in re.findall(r'<tr>(.*?)</tr>', institute_view, re.S)
+            if self.active.name in block
+        )
+        institute_cells = [re.sub(r'<[^>]+>', '', c).strip()
+                           for c in re.findall(r'<td.*?>(.*?)</td>', institute_row, re.S)]
+        self.assertEqual(institute_cells[1:], ['70.00', '9.22', '60.78', '13.2%', '-', '7.28'])
+
+    def test_unreceived_amount_uses_allocated_contract_not_total_contract(self):
+        # 课题合同 900 而院方份额 1400、已到账 1095.65：用课题合同会算出负未到账，
+        # 院只欠自己那一份，所以基数必须是「归属院/地下空间课题合同经费」。
+        project = Project.objects.create(
+            project_id='LEDGER-EXT-UNRECEIVED', name='新型竖井掘进装备技术研究', status='在研',
+            total_budget=Decimal('1400.00'), external_funding=Decimal('1400.00'),
+            ownership='西勘院', managing_unit='测试单位', level='省部级',
+            project_type='应用研究', role='牵头', start_year=2022, start_date=date(2022, 1, 1),
+            directory_path='LEDGER-EXT-UNRECEIVED',
+        )
+        rows = [[1, '新型竖井掘进装备技术研究', '地下空间研究院', '中建股份', '刘帆', '2022.1', '2025.12',
+                 '在研', '1', 9000000, 14000000, 10956521.74, 5025000, 5931521.74, 1383300]]
+        self._upload('external.xlsx', self._workbook_bytes('汇总表', self.EXTERNAL_HEADERS, rows),
+                     ledger_type='external')
+
+        row = SpecialLedgerRow.objects.get()
+        self.assertEqual(row.contract_total, Decimal('900.00'))
+        self.assertEqual(row.unreceived_amount, Decimal('304.347826'))
+        self.assertEqual(row.received_amount + row.unreceived_amount, row.contract_allocated)
+
+        response = self.client.get(reverse('special_expense_monitor'))
+        self.assertContains(response, '未到账')
+        self.assertContains(response, '304.35')
+
+    def test_institute_ledger_has_no_unreceived_amount(self):
+        # 院自主由院内预算额度直接下达，没有到账环节，必须留空而不是显示 0。
+        payload = self._workbook_bytes('汇总表', self.INSTITUTE_HEADERS, self._institute_rows())
+        self._upload('institute.xlsx', payload)
+
+        row = SpecialLedgerRow.objects.get(project=self.active)
+        self.assertIsNone(row.unreceived_amount)
+
+    def test_overreceived_external_row_is_flagged(self):
+        project = Project.objects.create(
+            project_id='LEDGER-EXT-OVER', name='地下物流系统关键技术研究', status='在研',
+            total_budget=Decimal('480.00'), external_funding=Decimal('480.00'),
+            ownership='西勘院', managing_unit='测试单位', level='省部级',
+            project_type='应用研究', role='牵头', start_year=2019, start_date=date(2019, 6, 1),
+            directory_path='LEDGER-EXT-OVER',
+        )
+        rows = [[1, '地下物流系统关键技术研究', '地下空间研究院', '中建股份', '郑立宁', '2019.6', '2023.12',
+                 '在研', '1', 4800000, 4315000, 4515000, 4053508.98, 261491.02, 8064.53]]
+        self._upload('external.xlsx', self._workbook_bytes('汇总表', self.EXTERNAL_HEADERS, rows),
+                     ledger_type='external')
+
+        row = SpecialLedgerRow.objects.get(project=project)
+        self.assertEqual(row.unreceived_amount, Decimal('-20.0000'))
+
+        response = self.client.get(reverse('special_expense_monitor'))
+        self.assertContains(response, '超到账')
+        self.assertContains(response, '-20.00')
+
+    def test_ledger_type_filter_limits_rows_and_summary(self):
+        # 顶部三个按钮过去只切换高亮，视图仍渲染两本台账，指标卡数字与筛选不符。
+        external = Project.objects.create(
+            project_id='LEDGER-EXT-FILTER', name='地下物流系统关键技术研究', status='在研',
+            total_budget=Decimal('480.00'), external_funding=Decimal('480.00'),
+            ownership='西勘院', managing_unit='测试单位', level='省部级',
+            project_type='应用研究', role='牵头', start_year=2019, start_date=date(2019, 6, 1),
+            directory_path='LEDGER-EXT-FILTER',
+        )
+        self._upload('institute.xlsx', self._workbook_bytes('汇总表', self.INSTITUTE_HEADERS, self._institute_rows()))
+        external_rows = [[1, external.name, '地下空间研究院', '中建股份', '郑立宁', '2019.6', '2023.12',
+                          '在研', '1', 4800000, 4315000, 4315000, 4053508.98, 261491.02, 8064.53]]
+        self._upload('external.xlsx', self._workbook_bytes('汇总表', self.EXTERNAL_HEADERS, external_rows),
+                     ledger_type='external')
+
+        base = reverse('special_expense_monitor')
+        all_view = self.client.get(base).content.decode()
+        institute_view = self.client.get(base + '?ledger_type=institute').content.decode()
+        external_view = self.client.get(base + '?ledger_type=external').content.decode()
+
+        self.assertIn('在研 / 延期专项课题执行 (2)', all_view)
+        self.assertIn('在研 / 延期专项课题执行 (1)', institute_view)
+        self.assertIn('在研 / 延期专项课题执行 (1)', external_view)
+        self.assertIn(self.active.name, institute_view)
+        self.assertNotIn(self.active.name, external_view)
+        self.assertIn(external.name, external_view)
+        self.assertNotIn(external.name, institute_view)
+        self.assertIn('台账有、系统无（已忽略 1 个）', institute_view)
+        self.assertNotIn('台账有、系统无', external_view)
 
     def test_repeat_upload_is_idempotent(self):
         payload = self._workbook_bytes('汇总表', self.INSTITUTE_HEADERS, self._institute_rows())

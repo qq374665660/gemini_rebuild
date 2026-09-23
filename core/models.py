@@ -658,18 +658,18 @@ class SpecialLedgerRow(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="建立时间")
 
     @property
-    def budget_amount(self):
-        """外部课题以已到账经费为基准，院自主课题以预算额度为基准。"""
-        if self.ledger_type == 'external':
-            return self.received_amount
-        return self.approved_budget
+    def unreceived_amount(self):
+        """外部课题已立项但尚未拨付到院的经费。
 
-    @property
-    def execution_rate(self):
-        budget = self.budget_amount
-        if not budget:
+        基数用「归属院/地下空间课题合同经费」而非「课题合同经费」：院只拿自己那一份，
+        用整课题合同额会把兄弟单位的份额算成欠款。院自主课题由院内预算额度直接下达，
+        不存在到账环节，返回 None 让页面显示“-”而不是 0。
+        """
+        if self.ledger_type != 'external':
             return None
-        return (self.executed_total or Decimal('0')) / budget * Decimal('100')
+        if self.contract_allocated is None or self.received_amount is None:
+            return None
+        return self.contract_allocated - self.received_amount
 
     def __str__(self):
         return f"{self.ledger_name} - {self.executed_total}"

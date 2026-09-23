@@ -87,8 +87,8 @@
                                 <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-database"></i></div><div class="stat-card-value">{{ active_summary.budget|floatformat:2 }}</div><div class="stat-card-label">在研专项经费({{ unit_label }})</div></div>
                                 <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-money-bill-transfer"></i></div><div class="stat-card-value">{{ active_summary.executed|floatformat:2 }}</div><div class="stat-card-label">已执行({{ unit_label }})</div></div>
                                 <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-percentage"></i></div><div class="stat-card-value">{% if active_summary.rate is not None %}{{ active_summary.rate|floatformat:1 }}%{% else %}-{% endif %}</div><div class="stat-card-label">整体执行率</div></div>
-                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-wallet"></i></div><div class="stat-card-value">{{ active_summary.remaining|floatformat:2 }}</div><div class="stat-card-label">剩余可支出({{ unit_label }})</div></div>
-                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-calendar-day"></i></div><div class="stat-card-value">{{ active_summary.year_executed|floatformat:2 }}</div><div class="stat-card-label">本年已执行({{ unit_label }})</div></div>
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-wallet"></i></div><div class="stat-card-value">{{ active_summary.remaining|floatformat:2 }}</div><div class="stat-card-label">剩余({{ unit_label }})</div></div>
+                                <div class="stat-card"><div class="stat-card-icon"><i class="fas fa-calendar-day"></i></div><div class="stat-card-value">{{ active_summary.year_executed|floatformat:2 }}</div><div class="stat-card-label">本年执行({{ unit_label }})</div></div>
                             </div>
 
                             <div class="content-section">
@@ -96,16 +96,14 @@
                                 <div class="content-section-body">
                                     {% if risk_rows %}
                                         <div class="table-responsive"><table class="table expense-table">
-                                            <thead><tr><th>课题名称</th><th>台账类别</th><th>归属单位</th><th>专项经费</th><th>已执行</th><th>剩余可支出</th><th>执行率</th><th>提醒</th></tr></thead>
+                                            <thead><tr><th>课题名称</th><th>专项经费</th><th>已执行</th><th>剩余</th><th>执行率</th><th>提醒</th></tr></thead>
                                             <tbody>{% for item in risk_rows %}<tr class="expense-over-row">
-                                                <td>{% if item.project %}<a href="{% url 'project_detail' item.project.project_id %}">{{ item.row.ledger_name }}</a>{% else %}{{ item.row.ledger_name }}{% endif %}</td>
-                                                <td>{{ item.row.get_ledger_type_display }}</td>
-                                                <td>{{ item.row.owning_unit|default:"-" }}</td>
-                                                <td>{{ item.row.budget_amount|floatformat:2 }}</td>
-                                                <td>{{ item.row.executed_total|floatformat:2 }}</td>
-                                                <td class="{% if item.row.remaining_amount < 0 %}text-danger{% endif %}">{{ item.row.remaining_amount|floatformat:2 }}</td>
-                                                <td>{% if item.row.execution_rate is not None %}<div class="special-rate"><div class="special-rate-track"><div class="special-rate-fill" style="width:{% if item.row.execution_rate > 100 %}100{% else %}{{ item.row.execution_rate|floatformat:1 }}{% endif %}%"></div></div><span>{{ item.row.execution_rate|floatformat:1 }}%</span>{% else %}-{% endif %}</td>
-                                                <td>{% if item.row.remaining_amount is not None and item.row.remaining_amount < 0 %}<span class="badge badge-danger">可支出为负</span> {% endif %}{% if item.row.year_disposable is not None and item.row.year_disposable < 0 %}<span class="badge badge-danger">本年可支配为负</span> {% endif %}{% if item.row.execution_rate is not None and item.row.execution_rate >= high_rate %}<span class="badge badge-warning">执行率≥{{ high_rate }}%</span>{% endif %}</td>
+                                                <td>{% if item.project %}<a href="{% url 'project_detail' item.project.project_id %}">{{ item.row.ledger_name }}</a>{% else %}{{ item.row.ledger_name }}{% endif %}<div class="text-muted"><small>{{ item.row.get_ledger_type_display }}</small></div></td>
+                                                <td>{{ item.special_budget|floatformat:2 }}</td>
+                                                <td>{{ item.executed|floatformat:2 }}</td>
+                                                <td class="{% if item.remaining is not None and item.remaining < 0 %}text-danger{% endif %}">{{ item.remaining|floatformat:2 }}</td>
+                                                <td>{% if item.rate is not None %}<div class="special-rate"><div class="special-rate-track"><div class="special-rate-fill" style="width:{% if item.rate > 100 %}100{% else %}{{ item.rate|floatformat:1 }}{% endif %}%"></div></div><span>{{ item.rate|floatformat:1 }}%</span>{% else %}-{% endif %}</td>
+                                                <td>{% if item.remaining is not None and item.remaining < 0 %}<span class="badge badge-danger">已超出专项经费</span> {% endif %}{% if item.rate is not None and item.rate >= high_rate %}<span class="badge badge-warning">执行率≥{{ high_rate }}%</span> {% endif %}{% if item.unreceived is not None and item.unreceived < 0 %}<span class="badge badge-danger">超到账</span>{% endif %}</td>
                                             </tr>{% endfor %}</tbody>
                                         </table></div>
                                     {% else %}<div class="empty-state"><i class="fas fa-check-circle"></i><p>在研专项课题中暂无可支出为负或执行率超阈值的课题。</p></div>{% endif %}
@@ -135,22 +133,21 @@
                                 <div class="content-section-body">
                                     {% if active_rows %}
                                         <div class="table-responsive"><table class="table expense-table">
-                                            <thead><tr><th>课题名称</th><th>台账类别</th><th>归属单位</th><th>经费来源</th><th>专项经费</th><th>已执行</th><th>剩余</th><th>执行率</th><th>本年预算</th><th>本年执行</th><th>与系统登记</th></tr></thead>
+                                            <thead><tr><th>课题名称</th><th>专项经费</th><th>已执行</th><th>剩余</th><th>执行率</th><th>未到账</th><th>本年执行</th></tr></thead>
                                             <tbody>{% for item in active_rows %}<tr>
-                                                <td><a href="{% url 'project_detail' item.project.project_id %}">{{ item.row.ledger_name }}</a><div class="text-muted"><small>{{ item.project.project_id }} · {{ item.system_status }}</small></div></td>
-                                                <td>{{ item.row.get_ledger_type_display }}</td>
-                                                <td>{{ item.row.owning_unit|default:"-" }}</td>
-                                                <td>{{ item.row.funder|default:"-" }}</td>
-                                                <td>{{ item.row.budget_amount|floatformat:2 }}</td>
-                                                <td>{{ item.row.executed_total|floatformat:2 }}</td>
-                                                <td class="{% if item.row.remaining_amount < 0 %}text-danger{% endif %}">{{ item.row.remaining_amount|floatformat:2 }}</td>
-                                                <td>{% if item.row.execution_rate is not None %}<div class="special-rate"><div class="special-rate-track"><div class="special-rate-fill" style="width:{% if item.row.execution_rate > 100 %}100{% else %}{{ item.row.execution_rate|floatformat:1 }}{% endif %}%"></div></div><span>{{ item.row.execution_rate|floatformat:1 }}%</span>{% else %}-{% endif %}</td>
-                                                <td>{{ item.row.year_budget|floatformat:2 }}</td>
-                                                <td>{{ item.row.year_executed|floatformat:2 }}</td>
-                                                <td>{% if item.budget_gap is None %}<span class="text-muted">-</span>{% elif item.budget_gap > 0 or item.budget_gap < 0 %}<span class="badge badge-warning" title="台账 {{ item.row.budget_amount }} / 系统 {{ item.system_budget }}">差 {{ item.budget_gap|floatformat:2 }}</span>{% else %}<span class="badge badge-success">一致</span>{% endif %}</td>
+                                                <td><a href="{% url 'project_detail' item.project.project_id %}">{{ item.row.ledger_name }}</a><div class="text-muted"><small>{{ item.project.project_id }} · {{ item.row.get_ledger_type_display }} · {{ item.system_status }}</small></div></td>
+                                                <td>{{ item.special_budget|floatformat:2 }}</td>
+                                                <td>{{ item.executed|floatformat:2 }}</td>
+                                                <td class="{% if item.remaining is not None and item.remaining < 0 %}text-danger{% endif %}">{{ item.remaining|floatformat:2 }}</td>
+                                                <td>{% if item.rate is not None %}<div class="special-rate"><div class="special-rate-track"><div class="special-rate-fill" style="width:{% if item.rate > 100 %}100{% else %}{{ item.rate|floatformat:1 }}{% endif %}%"></div></div><span>{{ item.rate|floatformat:1 }}%</span>{% else %}-{% endif %}</td>
+                                                <td>{% if item.unreceived is None %}<span class="text-muted" title="院自主课题由院内预算额度直接下达，无到账环节">-</span>{% elif item.unreceived < 0 %}<span class="badge badge-danger" title="归属院合同 {{ item.row.contract_allocated }} / 已到账 {{ item.row.received_amount }}">超到账 {{ item.unreceived|floatformat:2 }}</span>{% elif item.unreceived > 0 %}<span class="text-warning">{{ item.unreceived|floatformat:2 }}</span>{% else %}<span class="text-muted">0.00</span>{% endif %}</td>
+                                                <td>{{ item.year_executed|floatformat:2 }}</td>
                                             </tr>{% endfor %}</tbody>
                                         </table></div>
-                                        <div class="table-footnote text-muted">“与系统登记”比对的是课题档案里的外部专项 / 院专项，台账为财务到账口径，两者口径不同，仅供核对照。</div>
+                                        <div class="table-footnote text-muted">
+                                            专项经费取课题档案登记的额度（外部课题为「外部专项」，院自主课题为「院专项」）；剩余 = 专项经费 − 已执行，已执行与本年收入取台账「总执行额度」「本年执行额度」。
+                                            未到账 = 台账「归属院课题合同经费」−「已到账经费」，仅外部课题适用。
+                                        </div>
                                     {% else %}<div class="empty-state"><i class="fas fa-folder-open"></i><p>暂无已关联且在研的专项课题。</p></div>{% endif %}
                                 </div>
                             </div>
@@ -179,16 +176,15 @@
                                 <div class="content-section-body">
                                     {% if closed_rows %}
                                         <div class="table-responsive"><table class="table expense-table">
-                                            <thead><tr><th>课题名称</th><th>台账类别</th><th>台账进度</th><th>系统状态</th><th>专项经费</th><th>已执行</th><th>剩余</th><th>执行率</th></tr></thead>
+                                            <thead><tr><th>课题名称</th><th>台账进度</th><th>系统状态</th><th>专项经费</th><th>已执行</th><th>剩余</th><th>执行率</th></tr></thead>
                                             <tbody>{% for item in closed_rows %}<tr>
-                                                <td>{% if item.project %}<a href="{% url 'project_detail' item.project.project_id %}">{{ item.row.ledger_name }}</a>{% else %}{{ item.row.ledger_name }}{% endif %}</td>
-                                                <td>{{ item.row.get_ledger_type_display }}</td>
+                                                <td>{% if item.project %}<a href="{% url 'project_detail' item.project.project_id %}">{{ item.row.ledger_name }}</a>{% else %}{{ item.row.ledger_name }}{% endif %}<div class="text-muted"><small>{{ item.row.get_ledger_type_display }}</small></div></td>
                                                 <td>{{ item.row.ledger_status|default:"-" }}</td>
                                                 <td>{{ item.system_status|default:"未关联" }}</td>
-                                                <td>{{ item.row.budget_amount|floatformat:2 }}</td>
-                                                <td>{{ item.row.executed_total|floatformat:2 }}</td>
-                                                <td>{{ item.row.remaining_amount|floatformat:2 }}</td>
-                                                <td>{% if item.row.execution_rate is not None %}{{ item.row.execution_rate|floatformat:1 }}%{% else %}-{% endif %}</td>
+                                                <td>{{ item.special_budget|floatformat:2 }}</td>
+                                                <td>{{ item.executed|floatformat:2 }}</td>
+                                                <td class="{% if item.remaining is not None and item.remaining < 0 %}text-danger{% endif %}">{{ item.remaining|floatformat:2 }}</td>
+                                                <td>{% if item.rate is not None %}{{ item.rate|floatformat:1 }}%{% else %}-{% endif %}</td>
                                             </tr>{% endfor %}</tbody>
                                         </table></div>
                                     {% else %}<div class="empty-state"><i class="fas fa-check"></i><p>暂无其他状态的专项课题。</p></div>{% endif %}

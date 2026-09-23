@@ -62,13 +62,8 @@ LEDGER_MONEY_COLUMNS = {
     '本年执行额度额度': 'year_executed',
     '本年执行额度': 'year_executed',
 }
-# 面板上作为“专项经费预算”的那一列。
-LEDGER_BUDGET_FIELD = {
-    LEDGER_EXTERNAL: 'received_amount',
-    LEDGER_INSTITUTE: 'approved_budget',
-}
-# 与系统登记经费比对用的字段。
-LEDGER_SYSTEM_COMPARISON_FIELD = {
+# 专项经费分母：一律取课题档案登记的专项经费，不取台账额度。
+LEDGER_SPECIAL_BUDGET_FIELD = {
     LEDGER_EXTERNAL: 'external_funding',
     LEDGER_INSTITUTE: 'institute_funding',
 }
@@ -280,7 +275,6 @@ def parse_special_ledger(file_path, ledger_type, projects=(), assignment_lookup=
         'ambiguous_total': sum(1 for record in records if record['match_state'] == 'ambiguous'),
         'ignored_total': len(ignored_rows),
         'totals': totals,
-        'budget_field': LEDGER_BUDGET_FIELD[ledger_type],
     }
 
 

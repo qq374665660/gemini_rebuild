@@ -81,7 +81,7 @@ from .expense_analysis import (
     similarity_score,
 )
 from .special_ledger import (
-    LEDGER_SYSTEM_COMPARISON_FIELD,
+    LEDGER_SPECIAL_BUDGET_FIELD,
     SpecialLedgerError,
     normalize_project_name,
     parse_special_ledger,
@@ -1677,7 +1677,10 @@ def _special_ledger_assignment_lookup():
 
 
 def _special_ledger_rows(import_log, previous_import):
-    """把台账明细装配成面板行，并按系统课题状态标注。"""
+    """把台账明细装配成面板行，并按系统课题状态标注。
+
+    专项经费一律取课题档案登记的额度（外部专项 / 院专项），台账只提供已执行与本年收入。
+    """
     previous_executed = {}
     if previous_import is not None:
         previous_executed = {
@@ -1690,24 +1693,35 @@ def _special_ledger_rows(import_log, previous_import):
         project = row.project
         system_status = project.status if project else ''
         is_active = bool(project) and system_status in SPECIAL_LEDGER_ACTIVE_STATUSES
-        system_budget = getattr(project, LEDGER_SYSTEM_COMPARISON_FIELD[import_log.ledger_type], None) if project else None
-        ledger_budget = row.budget_amount
-        budget_gap = None
-        if ledger_budget is not None and system_budget is not None:
-            budget_gap = ledger_budget - Decimal(str(system_budget))
+
+        special_budget = None
+        if project is not None:
+            value = getattr(project, LEDGER_SPECIAL_BUDGET_FIELD[import_log.ledger_type])
+            special_budget = Decimal(str(value)) if value is not None else None
+        executed = row.executed_total
+        remaining = None
+        rate = None
+        if special_budget is not None:
+            remaining = special_budget - (executed or Decimal('0'))
+            if special_budget:
+                rate = (executed or Decimal('0')) / special_budget * Decimal('100')
 
         previous_total = previous_executed.get(row.ledger_name)
         increase = None
-        if previous_total is not None and row.executed_total is not None:
-            increase = row.executed_total - previous_total
+        if previous_total is not None and executed is not None:
+            increase = executed - previous_total
 
         rows.append({
             'row': row,
             'project': project,
             'is_active': is_active,
             'system_status': system_status,
-            'system_budget': system_budget,
-            'budget_gap': budget_gap,
+            'special_budget': special_budget,
+            'executed': executed,
+            'remaining': remaining,
+            'rate': rate,
+            'unreceived': row.unreceived_amount,
+            'year_executed': row.year_executed,
             'previous_total': previous_total,
             'increase': increase,
             'ledger_project_mismatch': bool(project) and row.ledger_status
@@ -1725,6 +1739,8 @@ def special_expense_monitor_view(request):
     imports = {}
     previous_imports = {}
     for candidate, _label in SpecialLedgerImport.LEDGER_TYPE_CHOICES:
+        if ledger_type and candidate != ledger_type:
+            continue
         history = list(SpecialLedgerImport.objects.filter(ledger_type=candidate).order_by('-created_at'))
         if history:
             imports[candidate] = history[0]
@@ -1759,15 +1775,14 @@ def special_expense_monitor_view(request):
         remaining = Decimal('0')
         year_executed = Decimal('0')
         for entry in entries:
-            row = entry['row']
-            if row.budget_amount is not None:
-                budget += row.budget_amount
-            if row.executed_total is not None:
-                executed += row.executed_total
-            if row.remaining_amount is not None:
-                remaining += row.remaining_amount
-            if row.year_executed is not None:
-                year_executed += row.year_executed
+            if entry['special_budget'] is not None:
+                budget += entry['special_budget']
+            if entry['executed'] is not None:
+                executed += entry['executed']
+            if entry['remaining'] is not None:
+                remaining += entry['remaining']
+            if entry['year_executed'] is not None:
+                year_executed += entry['year_executed']
         return {
             'count': len(entries),
             'budget': budget,
@@ -1779,9 +1794,9 @@ def special_expense_monitor_view(request):
 
     risk_rows = [
         entry for entry in active_rows
-        if (entry['row'].remaining_amount is not None and entry['row'].remaining_amount < 0)
-        or (entry['row'].year_disposable is not None and entry['row'].year_disposable < 0)
-        or (entry['row'].execution_rate is not None and entry['row'].execution_rate >= SPECIAL_LEDGER_HIGH_RATE)
+        if (entry['remaining'] is not None and entry['remaining'] < 0)
+        or (entry['rate'] is not None and entry['rate'] >= SPECIAL_LEDGER_HIGH_RATE)
+        or (entry['unreceived'] is not None and entry['unreceived'] < 0)
     ]
     growth_rows = [
         entry for entry in active_rows
