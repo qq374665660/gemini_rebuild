@@ -2331,6 +2331,21 @@ class FileManagementRoutingTests(TestCase):
             self.assertFalse((folder / '01_申报' / '材料.txt').exists())
             self.assertTrue(folder.is_dir())
 
+    def test_delete_link_returns_to_files_tab(self):
+        """文件树里的删除是普通链接，回跳必须停在文件管理标签而不是课题信息。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = self.make_tree(temp_dir)
+            with override_settings(PROJECTS_ROOT=Path(temp_dir)):
+                detail_url = reverse('project_detail', args=[self.project.project_id])
+                response = self.client.get(
+                    reverse('file_action', args=[self.project.project_id, 'delete']),
+                    {'path': '01_申报/材料.txt'},
+                )
+
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response['Location'], f'{detail_url}?tab=files')
+            self.assertFalse((folder / '01_申报' / '材料.txt').exists())
+
     def test_standard_folder_cannot_be_deleted_by_posting_directly(self):
         """界面不给 01~06 删除入口，后端也要挡住绕过界面的 POST。"""
         with tempfile.TemporaryDirectory() as temp_dir:

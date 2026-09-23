@@ -2270,6 +2270,9 @@ def file_action_view(request, project_id, action):
     # Check if this is an AJAX request
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     project_root = project.directory_path
+    # 删除/改名等入口是普通链接，整页跳转回来必须停在“文件管理”标签，
+    # 否则课题详情页默认 active_tab='info'，操作成功反而被甩回课题信息页。
+    back_to_files = reverse('project_detail', kwargs={'project_id': project.project_id}) + '?tab=files'
 
     if action == 'upload' and request.method == 'POST':
         uploaded_files = request.FILES.getlist('files')
@@ -2279,7 +2282,7 @@ def file_action_view(request, project_id, action):
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '请选择要上传的文件。'})
             messages.error(request, "请选择要上传的文件。")
-            return redirect('project_detail', project_id=project.project_id)
+            return redirect(back_to_files)
         
         target_path_abs = _build_abs_path(project_root, target_path_rel)
         target_path_abs = os.path.normpath(target_path_abs)
@@ -2288,7 +2291,7 @@ def file_action_view(request, project_id, action):
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '无效的目标路径。'})
             messages.error(request, "无效的目标路径。")
-            return redirect('project_detail', project_id=project.project_id)
+            return redirect(back_to_files)
         
         # 确保目标目录存在
         os.makedirs(target_path_abs, exist_ok=True)
@@ -2341,13 +2344,13 @@ def file_action_view(request, project_id, action):
                 if is_ajax:
                     return JsonResponse({'success': False, 'message': '无效的文件路径：只能删除课题目录内的文件或文件夹。'})
                 messages.error(request, "无效的文件路径：只能删除课题目录内的文件或文件夹。")
-                return redirect('project_detail', project_id=project.project_id)
+                return redirect(back_to_files)
 
             if os.path.isdir(item_path_abs) and _is_protected_folder(item_path_abs):
                 if is_ajax:
                     return JsonResponse({'success': False, 'message': '标准目录（01~06）不允许删除。'})
                 messages.error(request, "标准目录（01~06）不允许删除。")
-                return redirect('project_detail', project_id=project.project_id)
+                return redirect(back_to_files)
                 
             if os.path.exists(item_path_abs):
                 try:
@@ -2383,34 +2386,34 @@ def file_action_view(request, project_id, action):
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '新名称不能为空。'})
             messages.error(request, "新名称不能为空。")
-            return redirect('project_detail', project_id=project.project_id)
+            return redirect(back_to_files)
 
         safe_name = re.sub(r'[\\/*?"<>|:]', '_', new_name)
         if safe_name in ('.', '..'):
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '新名称不合法。'})
             messages.error(request, "新名称不合法。")
-            return redirect('project_detail', project_id=project.project_id)
+            return redirect(back_to_files)
 
         item_path_abs = _resolve_within_root(project_root, item_path_rel)
         if item_path_abs is None:
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '无效的目标路径：只能重命名课题目录内的文件或文件夹。'})
             messages.error(request, "无效的目标路径：只能重命名课题目录内的文件或文件夹。")
-            return redirect('project_detail', project_id=project.project_id)
+            return redirect(back_to_files)
 
         # 把 01~06 改名等同于删掉标准目录（下次打开只会新建空目录，资料被孤立）
         if os.path.isdir(item_path_abs) and _is_protected_folder(item_path_abs):
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '标准目录（01~06）不允许重命名。'})
             messages.error(request, "标准目录（01~06）不允许重命名。")
-            return redirect('project_detail', project_id=project.project_id)
+            return redirect(back_to_files)
 
         if not os.path.exists(item_path_abs):
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '目标不存在。'})
             messages.error(request, "目标不存在。")
-            return redirect('project_detail', project_id=project.project_id)
+            return redirect(back_to_files)
 
         parent_dir = os.path.dirname(item_path_abs)
         new_path_abs = os.path.normpath(os.path.join(parent_dir, safe_name))
@@ -2418,13 +2421,13 @@ def file_action_view(request, project_id, action):
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '重命名目标非法。'})
             messages.error(request, "重命名目标非法。")
-            return redirect('project_detail', project_id=project.project_id)
+            return redirect(back_to_files)
 
         if os.path.exists(new_path_abs):
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '同名文件或文件夹已存在。'})
             messages.error(request, "同名文件或文件夹已存在。")
-            return redirect('project_detail', project_id=project.project_id)
+            return redirect(back_to_files)
 
         try:
             os.rename(item_path_abs, new_path_abs)
@@ -2444,7 +2447,7 @@ def file_action_view(request, project_id, action):
             
             if not _is_within_root(item_path_abs, project_root):
                 messages.error(request, "无效的文件路径。")
-                return redirect('project_detail', project_id=project.project_id)
+                return redirect(back_to_files)
                 
             if os.path.exists(item_path_abs) and os.path.isfile(item_path_abs):
                 try:
@@ -2512,7 +2515,7 @@ def file_action_view(request, project_id, action):
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '文件夹名称不能为空。'})
             messages.error(request, "文件夹名称不能为空。")
-            return redirect('project_detail', project_id=project.project_id)
+            return redirect(back_to_files)
         
         # Sanitize folder name
         folder_name = re.sub(r'[\\/*?"<>|]', '_', folder_name)
@@ -2524,7 +2527,7 @@ def file_action_view(request, project_id, action):
             if is_ajax:
                 return JsonResponse({'success': False, 'message': '无效的父目录路径。'})
             messages.error(request, "无效的父目录路径。")
-            return redirect('project_detail', project_id=project.project_id)
+            return redirect(back_to_files)
         
         new_folder_path = os.path.join(parent_path_abs, folder_name)
         
@@ -2543,7 +2546,7 @@ def file_action_view(request, project_id, action):
                     return JsonResponse({'success': False, 'message': f'创建文件夹失败: {e}'})
                 messages.error(request, f"创建文件夹失败: {e}")
 
-    return redirect('project_detail', project_id=project.project_id)
+    return redirect(back_to_files)
 
 def analyze_content_view(request, project_id, analysis_type):
     from .ai_analysis import ai_service
