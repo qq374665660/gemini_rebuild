@@ -2346,6 +2346,25 @@ class FileManagementRoutingTests(TestCase):
             self.assertEqual(response['Location'], f'{detail_url}?tab=files')
             self.assertFalse((folder / '01_申报' / '材料.txt').exists())
 
+    def test_delete_feedback_is_visible_on_detail_page(self):
+        """详情页原先不渲染 messages，"删除成功"写了却看不见。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = self.make_tree(temp_dir)
+            with override_settings(PROJECTS_ROOT=Path(temp_dir)):
+                detail = self.client.get(
+                    reverse('file_action', args=[self.project.project_id, 'delete']),
+                    {'path': '01_申报/材料.txt'},
+                    follow=True,
+                )
+                blocked = self.client.get(
+                    reverse('file_action', args=[self.project.project_id, 'delete']),
+                    {'path': '01_申报'},
+                    follow=True,
+                )
+
+        self.assertContains(detail, '文件删除成功')
+        self.assertContains(blocked, '标准目录（01~06）不允许删除')
+
     def test_standard_folder_cannot_be_deleted_by_posting_directly(self):
         """界面不给 01~06 删除入口，后端也要挡住绕过界面的 POST。"""
         with tempfile.TemporaryDirectory() as temp_dir:

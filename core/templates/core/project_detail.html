@@ -1198,6 +1198,14 @@
                 <!-- 页面内容 -->
                 <div class="page-body">
                     <div class="container">
+                        <!-- 消息提示：删除/上传等文件操作的反馈只能靠这里，否则用户看不到结果 -->
+                        {% for message in messages %}
+                            <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %}" role="status">
+                                <i class="fas fa-{% if message.tags == 'success' %}check-circle{% elif message.tags == 'error' %}exclamation-circle{% else %}info-circle{% endif %}"></i>
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+
                         <!-- 现代化功能导航标签页 -->
                         <div class="tab-navigation">
                             <nav class="tab-nav" role="tablist" aria-label="课题详情功能">
